@@ -2,27 +2,26 @@ package com.joshcough.dwrai
 
 import nintaco.api.API
 
-/*
-require 'Class'
-require 'controller'
-require 'helpers'
-require 'player_data'
-require 'shops'
- */
+import Stats._
 
 case class Memory(api: API) {
 
-  val OverWorldId: MapId = MapId(1)
-  val ENEMY_ID_ADDR: Int = 0x3c
+  def readRAM(addr: Int): Byte = api.readCPU(addr).toByte
+  def writeRAM(addr: Int, value: Byte): Unit = api.writeCPU(addr, value)
 
-  def readRAM(addr: Int): Int = api.readCPU(addr)
-  def writeRAM(addr: Int, value: Int): Unit = api.writeCPU(addr, value)
+  def readRAM16(addr: Int): Short = api.readCPU16(addr).toShort
+  def writeRAM16(addr: Int, value: Short): Unit = api.writeCPU16(addr, value)
 
   def readROM(addr: Int): Int = api.readPrgRom(addr)
   def writeROM(addr: Int, value: Int): Unit = api.writePrgRom(addr, value)
 
-  def getX: Int = readRAM(0x8e)
-  def getY: Int = readRAM(0x8f)
+  // we should separate the stuff above here into its own interface.
+
+  val OverWorldId: MapId = MapId(1)
+  val ENEMY_ID_ADDR: Int = 0x3c
+
+  def getX: Byte = readRAM(0x8e)
+  def getY: Byte = readRAM(0x8f)
   def getMapId: MapId = MapId(readRAM(0x45))
   def getLocation: Point = Point(getMapId, getX, getY)
 
@@ -30,18 +29,18 @@ case class Memory(api: API) {
 
   // get the id of the current enemy, if it exists
   // no idea what gets returned if not in battle
-  def getEnemyId: Int = readRAM(ENEMY_ID_ADDR)
-  def setEnemyId(enemyId: Int): Unit = writeRAM(ENEMY_ID_ADDR, enemyId)
+  def getEnemyId: Byte = readRAM(ENEMY_ID_ADDR)
+  def setEnemyId(enemyId: Byte): Unit = writeRAM(ENEMY_ID_ADDR, enemyId)
 
-  def getRadiantTimer: Int = readRAM(0xDA)
-  def setRadiantTimer(n: Int): Unit = writeRAM(0xDA, n)
-  def getRepelTimer: Int = readRAM(0xDB)
-  def setRepelTimer(n: Int): Unit = writeRAM(0xDB, n)
+  def getRadiantTimer: Byte = readRAM(0xDA)
+  def setRadiantTimer(n: Byte): Unit = writeRAM(0xDA, n)
+  def getRepelTimer: Byte = readRAM(0xDB)
+  def setRepelTimer(n: Byte): Unit = writeRAM(0xDB, n)
 
   // DB10 - DB1F | "Return" placement code
   // The notes of dwr say that that block has the codes, but
   // I've narrowed it down to these exact addresses:
-  val RETURN_WARP_X_ADDR: Int = 0xDB15
+  val RETURN_WARP_X_ADDR: Int = 0xDB15 // TODO: should all addresses be shorts?/////
   val RETURN_WARP_Y_ADDR: Int = 0xDB1D
 
   def setReturnWarpLocation(x: Int, y: Int): Unit = {
@@ -49,19 +48,21 @@ case class Memory(api: API) {
     writeROM(RETURN_WARP_Y_ADDR, y)
   }
 
-  def getNumberOfHerbs: Int = readRAM(0xc0)
-  def getNumberOfKeys: Int = readRAM(0xbf)
-  def getCurrentHP: Int = readRAM(0xc5)
-  def getMaxHP: Int = readRAM(0xca)
-  def getCurrentMP: Int = readRAM(0xc6)
-  def getMaxMP: Int = readRAM(0xcb)
-  def getXP: Int = api.readCPU16(0xba)
-  def getGold: Int = api.readCPU16(0xbc)
-  def getLevel: Int = readRAM(0xc7)
-  def getStrength: Int = readRAM(0xc8)
-  def getAgility: Int = readRAM(0xc9)
-  def getAttackPower: Int = readRAM(0xcc)
-  def getDefensePower: Int = readRAM(0xcd)
+  def getNumberOfHerbs: Byte = readRAM(0xc0)
+  def getNumberOfKeys: Byte = readRAM(0xbf)
+  def getCurrentHP: CurrentHP = CurrentHP(readRAM(0xc5))
+  def getMaxHP: MaxHP = MaxHP(readRAM(0xca))
+  def getCurrentMP: CurrentMP = CurrentMP(readRAM(0xc6))
+  def getMaxMP: MaxMP = MaxMP(readRAM(0xcb))
+  def getXP: Xp = Xp(readRAM16(0xba))
+  def getGold: Gold = Gold(readRAM16(0xbc))
+  def getLevel: Level = Level(readRAM(0xc7))
+  def getStrength: Strength = Strength(readRAM(0xc8))
+  def getAgility: Agility = Agility(readRAM(0xc9))
+  def getAttackPower: AttackPower = AttackPower(readRAM(0xcc))
+  def getDefensePower: DefensePower = DefensePower(readRAM(0xcd))
+
+  def getStats: Stats = Stats(getLevel, getCurrentHP, getMaxHP, getCurrentMP, getMaxMP, getGold, getXP, getStrength, getAgility, getAttackPower, getDefensePower)
 
   def getLevels: List[Int] = Iterator.unfold(0xF35B){ i =>
     if (i <= 0xF395) Some((readROM(i + 1) * 256 + readROM(i), i + 2)) else None
@@ -70,19 +71,9 @@ case class Memory(api: API) {
   def all: Map[String, Any] = Map(
     "nrHerbs" -> getNumberOfHerbs,
     "nrKeys" -> getNumberOfKeys,
-    "hp" -> getCurrentHP,
-    "mp" -> getCurrentMP,
-    "maxHp" -> getMaxHP,
-    "maxMp" -> getMaxMP,
-    "xp" -> getXP,
-    "gold" -> getGold,
-    "level" -> getLevel,
-    "str" -> getStrength,
-    "agi" -> getAgility,
-    "atk" -> getAttackPower,
-    "def" -> getDefensePower,
     "loc" -> getLocation,
     "levels" -> getLevels,
+    "stats" -> getStats
   )
 
   /*
