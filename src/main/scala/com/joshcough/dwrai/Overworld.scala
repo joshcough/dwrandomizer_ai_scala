@@ -30,19 +30,18 @@ object Overworld {
 
     // 1D6D - 2662  | Overworld map          | RLE encoded, 1st nibble is tile, 2nd how many - 1
     // 2663 - 26DA  | Overworld map pointers | 16 bits each - address of each row of the map. (value - 0x8000 + 16)
-    def decodeOverworldPointer (p: Int): Int = {
-      val pointerAddr = (0x2663 - 16) + (p * 2)
+    def decodeOverworldPointer (p: Int): Address = {
+      val pointerAddr = Address((0x2663 - 16) + (p * 2))
       // mcgrew: Keep in mind they are in little endian format.
       // mcgrew: So it's LOW_BYTE, HIGH_BYTE
       // Also keep in mind they are addresses as the NES sees them, so to get the address in
       // ROM you'll need to subtract 0x8000
       val lowByte = memory.readROM(pointerAddr)
       val highByte = memory.readROM(pointerAddr+1)
-      val addr = (highByte * 256) + lowByte - 0x8000
-      addr
+      Address((highByte * 256) + lowByte - 0x8000)
     }
 
-    def getOverworldTileRow(overworldPointer: Int): IndexedSeq[OverworldTile] = {
+    def getOverworldTileRow(overworldPointer: Address): IndexedSeq[OverworldTile] = {
       IndexedSeq.unfold((0, overworldPointer)) { case (totalCount, currentAddr) =>
         if (totalCount < 120) {
           val tileId = hiNibble(memory.readROM(currentAddr))
@@ -53,7 +52,7 @@ object Overworld {
       }.flatten
     }
 
-    def getOverworldPointers: IndexedSeq[Int] = Range(0, 120).map(decodeOverworldPointer)
+    def getOverworldPointers: IndexedSeq[Address] = Range(0, 120).map(decodeOverworldPointer)
 
     getOverworldPointers.map(getOverworldTileRow)
   }
