@@ -4,7 +4,7 @@ import com.joshcough.dwrai.Bytes.{hiNibble, loNibble}
 import com.joshcough.dwrai.Locations.ImportantLocationType
 import com.joshcough.dwrai.MapId._
 
-class StaticMaps {
+object StaticMaps {
 
   object Warps {
       case class Warp(src: Point, dest: Point){
@@ -68,14 +68,13 @@ class StaticMaps {
     case object Both extends MapType
     case object Other extends MapType
   }
-  
+
 
   // 'to' is the source, and `warpRomAddr` contains the address to read the `from`
   // also seen Entrance right below.
   case class EntranceMetadata(to: Point, warpRomAddr: Address, entranceType: ImportantLocationType)
 
   case class StaticMapMetadata(id: MapId, name: String, mapType: MapType, size: MapSize, romAddr: Address, entrances: List[EntranceMetadata])
-
 
   val STATIC_MAP_METADATA: Map[MapId, StaticMapMetadata] = Map(
     CharlockId -> StaticMapMetadata(CharlockId,  "Charlock",             MapType.Both,    MapSize(Width(20), Height(20)), Address(0xC0),  List(EntranceMetadata(Point( CharlockId, 10, 19), Address(0xF3EA), ImportantLocationType.CHARLOCK))),
@@ -109,367 +108,315 @@ class StaticMaps {
     ErdricksCaveLv2Id -> StaticMapMetadata(ErdricksCaveLv2Id, "Erdrick's Cave Lv 2",  MapType.Dungeon, MapSize(Width(10), Height(10)), Address(0x12F2), List())
   )
 
-  /*
-  require 'controller'
-  require 'helpers'
-  require 'locations'
+  object Entrance {
+    def readFromRom(memory:Memory, m: EntranceMetadata): Entrance = {
+      val from = Point(MapId(memory.readROM(m.warpRomAddr)), memory.readROM(m.warpRomAddr+1), memory.readROM(m.warpRomAddr+2))
+      Entrance(from, m.to, m.entranceType)
+    }
+  }
+
+  //  -- TODO: at this point... is an Entrance any different from a Warp?
+  //  -- could we get rid of Entrance and just use Warp?
+  //    -- NOTE: 'from' is the "overworld"
+  //  -- (""s because the entrance could be to a basement and so from might actually be tantegel or garinham)
+  case class Entrance(from: Point, to: Point, entranceType: ImportantLocationType)
+
+  case class StaticMapTile(tileId: Int, name: String, walkable: Boolean, walkableWithKeys_ : Option[Boolean] = None) {
+    val walkableWithKeys = walkableWithKeys_.getOrElse(walkable)
+    // i think 1 here is ok. if its not walkable it wont end up in the graph at all
+    // the only small problem is charlock has some swamp and desert, but... they aren't really
+    // avoidable anyway, and so... it should just be fine to always use 1.
+    val weight = 1
+  }
+
+  object StaticMapTile {
+    val NON_DUNGEON_TILES = Vector(
+      StaticMapTile(0,  "Grass" , true),
+      StaticMapTile(1,  "Sand"  , true),
+      StaticMapTile(2,  "Water" , false),
+      StaticMapTile(3,  "Chest" , true),
+      StaticMapTile(4,  "Stone" , false),
+      StaticMapTile(5,  "Up"    , true),
+      StaticMapTile(6,  "Brick" , true),
+      StaticMapTile(7,  "Down"  , true),
+      StaticMapTile(8,  "Trees" , true),
+      StaticMapTile(9,  "Swamp" , true),
+      StaticMapTile(10, "Field" , true),
+      StaticMapTile(11, "Door"  , false, Some(true)), // walkableWithKeys
+      StaticMapTile(12, "Weapon", false),
+      StaticMapTile(13, "Inn"   , false),
+      StaticMapTile(14, "Bridge", true),
+      StaticMapTile(15, "Tile"  , false),
+    )
+
+    val DUNGEON_TILES = Vector(
+      StaticMapTile(0, "Stone", false),
+      StaticMapTile(1, "Up"   , true),
+      StaticMapTile(2, "Brick", true),
+      StaticMapTile(3, "Down" , true),
+      StaticMapTile(4, "Chest", true),
+      StaticMapTile(5, "Door" , false, Some(true)), // walkableWithKeys
+       // in swamp cave, we get id six where the princess is. its the only 6 we get in any dungeon.
+      StaticMapTile(6, "Brick", true),
+    )
+  }
 
 
-  TantegelEntrance       = Point(Tantegel, 11, 29)
-  TantegelBasementStairs = Point(Tantegel, 29, 29)
-  SwampNorthEntrance     = Point(SwampCave, 0, 0)
-  SwampSouthEntrance     = Point(SwampCave, 0, 29)
 
-  function getWarpsForMap(mapId, allWarps)
-    local res = {}
-    local warpsForMapId = list.filter(allWarps, function(w)
-      return w.src.mapId == mapId
-    end)
-    for _,w in ipairs(warpsForMapId) do
-      if res[w.src.x] == nil then res[w.src.x] = {} end
-      if res[w.src.x][w.src.y] == nil then res[w.src.x][w.src.y] = {} end
-      table.insert(res[w.src.x][w.src.y], w.dest)
-    end
-    return res
-  end
+  object StaticMap {
+//    def apply(metadata: StaticMapMetadata, rows: IndexedSeq[IndexedSeq[Int]], allWarps: List[Warps.Warp]): StaticMap = {
+////      val warps = getWarpsForMap(mapId, allWarps)
+////      val immobileScps = getImmobileNPCsForMap(mapId)
+//    }
 
+    def readStaticMapFromRom(memory: Memory, mapMetadata: StaticMapMetadata, allWarps: List[Warps.Warp]): StaticMap = {
+      val tileSet =
+        if(mapMetadata.id.value < 15) StaticMapTile.NON_DUNGEON_TILES
+        else StaticMapTile.DUNGEON_TILES
 
-  -- TODO: at this point... is an Entrance any different from a Warp?
-  -- could we get rid of Entrance and just use Warp?
-  -- NOTE: 'from' is the "overworld"
-  -- (""s because the entrance could be to a basement and so from might actually be tantegel or garinham)
-  Entrance = class(function(a, from, to, entranceType)
-    a.to = to
-    a.from = from
-    a.entranceType = entranceType
-  end)
+      // returns the tile id for the given (x,y) for the current map
+      def readTileIdAt(x: Int, y: Int): StaticMapTile = {
+        val offset = (y*mapMetadata.size.width.value) + x
+        val addr = Address(mapMetadata.romAddr.value - 16 + math.floor(offset/2).toInt)
+        val value = memory.readROM(addr)
+        val tile = if (offset % 2 == 0) hiNibble(value) else loNibble(value)
+        // TODO: test using 0x0111 instead of 7
+        tileSet(if (mapMetadata.id.value < 12) tile else tile & 7)
+      }
 
-  function Entrance:__tostring()
-    return "<Entrance from:" .. tostring(self.from) ..
-                   ", to:" .. tostring(self.to) ..
-                   ", entranceType:" .. tostring(self.entranceType) .. ">"
-  end
+      // returns a two dimensional grid of tile ids for the current map
+      val tiles: IndexedSeq[IndexedSeq[StaticMapTile]] = {
+        val h = mapMetadata.size.height.value
+        val w = mapMetadata.size.width.value
+        Range(0, h).map(y => Range(0, w).map(x => readTileIdAt(x,y)))
+      }
 
-  function Entrance:equals(e)
-    return self.from:equals(e.from) and self.to:equals(e.to)
-  end
+      val entrances = mapMetadata.entrances.map(Entrance.readFromRom(memory, _))
 
-  function EntranceMetadata:convertToEntrance(memory)
-    local from = Point(memory:readROM(self.warpRomAddr), memory:readROM(self.warpRomAddr+1), memory:readROM(self.warpRomAddr+2))
-    local res = Entrance(from, self.to, self.entranceType)
-    return res
-  end
-
-  StaticMapMetadata = class(function(a, mapId, name, mapType, size, mapLayoutRomAddr, entrances)
-    a.mapId = mapId
-    a.name = name
-    a.mapType = mapType
-    a.size = size
-    a.mapLayoutRomAddr = mapLayoutRomAddr
-    -- this is a list because swamp cave has two entrances
-    -- nil means it doesn't have an overworld location (or a warp location to tantegel or garinham anyway)
-    a.entrances = entrances
-  end)
-
-  function StaticMapMetadata:__tostring()
-    return "StaticMapMetadata(name: " .. self.name ..
-                           ", size: " .. tostring(self.size) ..
-                           ", mapId: " .. self.mapId ..
-                           ", mapLayoutRomAddr: " .. self.mapLayoutRomAddr ..
-                           ", entrances: " .. tostring(self.entrances) .. ")"
-  end
-
-  MapType = enum.new("Map Type", { "Town", "Dungeon", "Both", "Other" })
-
-  function StaticMapMetadata:readEntranceCoordinates(memory)
-    if self.entrances == nil then return nil end
-    local res = list.map(self.entrances, function(e) return e:convertToEntrance(memory) end)
-    return res
-  end
-
-  -- ok the idea is this:
-  -- we return a table 2-29 that has all the entrances in the values
-  -- then from LeaveOnFoot or whatever, we simply Goto(entrances)
-  function getAllEntranceCoordinates(memory)
-    local res = {}
-    for i, meta in pairs(STATIC_MAP_METADATA) do
-      res[i] = meta:readEntranceCoordinates(memory)
-    end
-    return res
-  end
-
-  mockEntranceCoordinates = {
-     [2]= {Entrance(Point( 2, 19, 10), Point(1, 54,  87), ImportantLocationType.CHARLOCK)},
-     [3]= {Entrance(Point( 3, 10,  0), Point(1, 29, 112), ImportantLocationType.Town)},
-     [4]= {Entrance(Point( 4, 29, 11), Point(1, 85,  90), ImportantLocationType.TANTEGEL)},
-     [7]= {Entrance(Point( 7, 23, 19), Point(1, 55,  67), ImportantLocationType.Town)},
-     [8]= {Entrance(Point( 8, 15,  0), Point(1, 98,  98), ImportantLocationType.Town)},
-     [9]= {Entrance(Point( 9, 14,  0), Point(1, 74, 108), ImportantLocationType.Town)},
-     [10]={Entrance(Point(10, 15,  5), Point(1, 36,  44), ImportantLocationType.Town)},
-     [11]={Entrance(Point(11, 14, 29), Point(1, 74, 110), ImportantLocationType.Town)},
-     [12]={Entrance(Point(12,  4,  0), Point(4, 29,  29), ImportantLocationType.CAVE)},
-     [13]={Entrance(Point(13,  9,  4), Point(1, 58, 106), ImportantLocationType.CAVE)},
-     [14]={Entrance(Point(14,  4,  0), Point(1, 82,   8), ImportantLocationType.CAVE)},
-     [21]={Entrance(Point(21,  0,  0), Point(1, 90,  78), ImportantLocationType.CAVE), Entrance(Point(21, 29, 0), Point(1, 93, 63), ImportantLocationType.CAVE)},
-     [22]={Entrance(Point(22,  7,  0), Point(1, 96,  99), ImportantLocationType.CAVE)},
-     [24]={Entrance(Point(24, 11,  6), Point(9, 19,   0), ImportantLocationType.CAVE)},
-     [28]={Entrance(Point(28,  0,  0), Point(1, 86,  84), ImportantLocationType.CAVE)}
+      StaticMap(mapMetadata, entrances, tiles, allWarps) // TODO these warps are obviously wrong
     }
 
-  StaticMapTile = class(function(a,tileId,name,walkable,walkableWithKeys)
-    a.id = tileId
-    a.tileId = tileId
-    a.name = name
-    a.walkable = walkable
-    a.walkableWithKeys = walkableWithKeys and true or false
-    -- i think 1 here is ok. if its not walkable it wont end up in the graph at all
-    -- the only small problem is charlock has some swamp and desert, but... they aren't really
-    -- avoidable anyway, and so... it should just be fine to always use 1.
-    a.weight = 1
-  end)
-
-  function StaticMapTile:__tostring()
-    local w = self.walkable and "true" or "false"
-    -- ok this is weird and might expose a hole in the whole program.
-    -- but then again maybe not
-    local wwk = self.walkableWithKeys and "true" or "true"
-    return "{ tileId: " .. self.tileId .. ", name: " .. self.name ..
-           ", walkable: " .. w .. ", walkableWithKeys: " .. wwk .. "}"
-  end
-
-  NON_DUNGEON_TILES = {
-    [0]   = StaticMapTile(0,  "Grass" , true),
-    [1]   = StaticMapTile(1,  "Sand"  , true),
-    [2]   = StaticMapTile(2,  "Water" , false),
-    [3]   = StaticMapTile(3,  "Chest" , true),
-    [4]   = StaticMapTile(4,  "Stone" , false),
-    [5]   = StaticMapTile(5,  "Up"    , true),
-    [6]   = StaticMapTile(6,  "Brick" , true),
-    [7]   = StaticMapTile(7,  "Down"  , true),
-    [8]   = StaticMapTile(8,  "Trees" , true),
-    [9]   = StaticMapTile(9,  "Swamp" , true),
-    [0xA] = StaticMapTile(10, "Field" , true),
-    [0xB] = StaticMapTile(11, "Door"  , false, true), -- walkableWithKeys
-    [0xC] = StaticMapTile(12, "Weapon", false),
-    [0xD] = StaticMapTile(13, "Inn"   , false),
-    [0xE] = StaticMapTile(14, "Bridge", true),
-    [0xF] = StaticMapTile(15, "Tile"  , false),
   }
 
-  DUNGEON_TILES = {
-    [0]   = StaticMapTile(0, "Stone", false),
-    [1]   = StaticMapTile(1, "Up"   , true),
-    [2]   = StaticMapTile(2, "Brick", true),
-    [3]   = StaticMapTile(3, "Down" , true),
-    [4]   = StaticMapTile(4, "Chest", true),
-    [5]   = StaticMapTile(5, "Door" , false, true), -- walkableWithKeys
-    -- in swamp cave, we get id six where the princess is. its the only 6 we get in any dungeon.
-    [6]   = StaticMapTile(6, "Brick", true),
+  case class StaticMap(metadata: StaticMapMetadata, entrances: List[Entrance], rows: IndexedSeq[IndexedSeq[StaticMapTile]], warps: List[Warps.Warp]) {
+    def mapId: MapId = metadata.id
+    def mapName: String = metadata.name
+    def mapType: MapType = metadata.mapType
+    def width: Width = metadata.size.width
+    def height: Height = metadata.size.height
+//    def warps = getWarpsForMap(mapId, allWarps)
+//    def immobileScps = getImmobileNPCsForMap(mapId)
+
+    def quickPrint: String =
+      mapName + "\n" + rows.map(_.map(_.name).mkString("|")).mkString("\n")
   }
-
-  IMMOBILE_NPCS = {
-    [Charlock]           = {},
-    [Hauksness]          = {},
-    [Tantegel]           = {{2,8}, {8,6}, {8,8}, {27,5}, {26,15}, {9,27}, {12,27}, {15, 20}},
-    [TantegelThroneRoom] = {{3,6}, {5,6}},
-    [CharlockThroneRoom] = {},
-    [Kol]                = {},
-    [Brecconary]         = {{1,13}, {4,7}, {10,26}, {20,23}, {28,1}},
-    [Garinham]           = {{2,17}, {9,6}, {14,1}},
-    [Cantlin]            = {{0,0}},
-    [Rimuldar]           = {{2,4}, {27,0}},
-    [TantegelBasement]   = {},
-    [NorthernShrine]     = {},
-    [SouthernShrine]     = {},
-    [CharlockCaveLv1]    = {},
-    [CharlockCaveLv2]    = {},
-    [CharlockCaveLv3]    = {},
-    [CharlockCaveLv4]    = {},
-    [CharlockCaveLv5]    = {},
-    [CharlockCaveLv6]    = {},
-    [SwampCave]          = {},
-    [MountainCaveLv1]    = {},
-    [MountainCaveLv2]    = {},
-    [GarinsGraveLv1]     = {},
-    [GarinsGraveLv2]     = {},
-    [GarinsGraveLv3]     = {},
-    [GarinsGraveLv4]     = {},
-    [ErdricksCaveLv1]    = {},
-    [ErdricksCaveLv2]    = {},
-  }
-
-  function getImmobileNPCsForMap(mapId)
-    if IMMOBILE_NPCS[mapId] == nil then return {} end
-    return list.map(IMMOBILE_NPCS[mapId], function(xy) return Point(mapId, xy[1], xy[2]) end)
-  end
-
-
-  function StaticMap:resetWarps (allWarps)
-    self.warps = getWarpsForMap(self.mapId, allWarps)
-  end
-
-  function StaticMap:getTileSet ()
-    return self.mapId < 15 and NON_DUNGEON_TILES or DUNGEON_TILES
-  end
-
-  function StaticMap:getTileAt(x, y)
-    return self:getTileSet()[self.rows[y][x]]
-  end
-
-  function StaticMap:setTileAt(x, y, newTileId)
-    self.rows[y][x] = newTileId
-  end
-
-  function StaticMap:childrenIds()
-    if     self.mapId ==  2 then return {6,15,16,17,18,19,20}
-    elseif self.mapId ==  4 then return {5}
-    elseif self.mapId ==  5 then return {4}
-    elseif self.mapId == 22 then return {23}
-    elseif self.mapId == 24 then return {25,26,27}
-    elseif self.mapId == 28 then return {29}
-    else return {}
-    end
-  end
-
-  function StaticMap:markSeenByPlayer(allStaticMaps)
-    log.debug("now seen by player: ", self.mapName)
-    self.seenByPlayer = true
-    for _,childId in pairs(self:childrenIds()) do
-      log.debug("now seen by player: ", allStaticMaps[childId].mapName)
-      allStaticMaps[childId].seenByPlayer = true
-    end
-  end
-
-  PRINT_TILE_NAME    = 1
-  PRINT_TILE_NO_KEYS = 2
-  PRINT_TILE_KEYS    = 3
-
-  function StaticMap:__tostring (printStrat)
-    function printTile(t)
-      if printStrat == PRINT_TILE_NAME or printStrat == nil then return t.name
-      elseif printStrat == PRINT_TILE_NO_KEYS then return t.walkable and "O" or " "
-      else return (t.walkableWithKeys or t.walkable) and "O" or " "
-      end
-    end
-
-    local tileSet = self:getTileSet()
-    local res = ""
-    for y = 0,self.height-1 do
-      local row = ""
-      for x = 0,self.width-1 do
-        local t = tileSet[self.rows[y][x]]
-        row = row .. " | " .. (printTile(t))
-      end
-      res = res .. row .. " |\n"
-    end
-    return self.mapName .. "\n" .. res
-  end
-
-  function StaticMap:writeTileNamesToFile (file)
-    file:write(self:__tostring() .. "\n")
-  end
-
-  MAP_DIRECTORY = "/Users/joshcough/work/dwrandomizer_ai/maps/"
-  STATIC_MAPS_FILE = MAP_DIRECTORY .. "static_maps.txt"
-
-  function StaticMap:saveIdsToFile ()
-    local mapFileName = MAP_DIRECTORY .. self.mapName
-    table.save(self.rows, mapFileName)
-  end
-
-  function StaticMap:saveGraphToFile ()
-    local graphNoKeysFileName = MAP_DIRECTORY .. self.mapName .. ".graph"
-    local graphWithKeysFileName = MAP_DIRECTORY .. self.mapName .. ".with_keys.graph"
-    table.save(self:mkGraph(false), graphNoKeysFileName)
-    table.save(self:mkGraph(true), graphWithKeysFileName)
-  end
-
-  -- TODO: i dont really think the next two functions work anymore.
-  function quickPrintGraph(mapId, allWarps)
-    log.debug(loadStaticMapFromFile(mapId, allWarps):mkGraph(false))
-    log.debug(loadStaticMapFromFile(mapId, allWarps):mkGraph(true))
-  end
-
-  function loadStaticMapFromFile (mapId, allWarps)
-    if mapId < 2 then return nil end
-    local mapData = STATIC_MAP_METADATA[mapId]
-    local mapName = mapData.name
-    local mapFileName = MAP_DIRECTORY .. mapName
-    -- TODO: these overworld coordinates are wrong. we definitely have a problem
-    -- reading from files now.
-    return StaticMap(mapId, mapName, mapData.mapType, mapData.overworldCoordinates,
-                     mapData.size.width, mapData.size.height, table.load(mapFileName), allWarps)
-  end
-
-  function readAllStaticMaps(memory, allWarps)
-    local res = {}
-    for i = 2, 29 do
-      res[i] = readStaticMapFromRom(memory, i, allWarps)
-    end
-    return res
-  end
-
-  function saveStaticMaps(memory, allWarps)
-    local file = io.open(STATIC_MAPS_FILE, "w")
-    local maps = readAllStaticMaps(memory, allWarps)
-    for i = 2, 29 do
-      maps[i]:writeTileNamesToFile(file)
-      maps[i]:saveIdsToFile()
-      maps[i]:saveGraphToFile()
-    end
-    file:close()
-  end
-
-
-
-   */
-
-  case class StaticMap(mapId: MapId, mapName: String, mapType, entrances, width, height, rows, allWarps)
-      a.mapId = mapId
-      a.mapName = mapName
-      a.mapType = mapType
-      a.entrances = entrances
-      a.width = width
-      a.height = height
-      a.rows = rows
-      a.warps = getWarpsForMap(mapId, allWarps)
-      a.immobileScps = getImmobileNPCsForMap(mapId)
-      a.seenByPlayer = false
-    end)
-
-
-
-  def readStaticMapFromRom(memory: Memory, mapMetadata: StaticMapMetadata, allWarps: List[Warps.Warp]) = {
-    // returns the tile id for the given (x,y) for the current map
-    def readTileIdAt(x: Int, y: Int) = {
-      val offset = (y*mapMetadata.size.width) + x
-      val addr = mapMetadata.mapLayoutRomAddr + math.floor(offset/2)
-      val value = memory.readROM(addr)
-      val tile = isEven(offset) and hiNibble(value) or loNibble(value)
-      // TODO: i tried to use 0x111 but it went insane... so just using 7 instead.
-      return mapId < 12 and tile or bitwise_and(tile, 7)
-    }
-
-    // returns a two dimensional grid of tile ids for the current map
-    def readTileIds () = {
-      val res = {}
-      for y = 0, mapMetadata.size.height-1 do
-        res[y] = {}
-        for x = 0, mapMetadata.size.width-1 do
-          res[y][x]=readTileIdAt(x,y)
-        end
-      end
-      return res
-    }
-
-    val entrances = nil
-    if mapMetadata.entrances ~= nil then
-      entrances = list.map(mapData.entrances, function(e) return e:convertToEntrance(memory) end)
-    end
-
-    return StaticMap(mapId, mapMetadata.name, mapMetadata.mapType, mapMetadata:readEntranceCoordinates(memory),
-      mapMetadata.size.width, mapMetadata.size.height, readTileIds(), allWarps)
-  }
-
-
 }
+
+
+
+/*
+
+TantegelEntrance       = Point(Tantegel, 11, 29)
+TantegelBasementStairs = Point(Tantegel, 29, 29)
+SwampNorthEntrance     = Point(SwampCave, 0, 0)
+SwampSouthEntrance     = Point(SwampCave, 0, 29)
+
+function getWarpsForMap(mapId, allWarps)
+  local res = {}
+  local warpsForMapId = list.filter(allWarps, function(w)
+    return w.src.mapId == mapId
+  end)
+  for _,w in ipairs(warpsForMapId) do
+    if res[w.src.x] == nil then res[w.src.x] = {} end
+    if res[w.src.x][w.src.y] == nil then res[w.src.x][w.src.y] = {} end
+    table.insert(res[w.src.x][w.src.y], w.dest)
+  end
+  return res
+end
+
+
+function StaticMapMetadata:readEntranceCoordinates(memory)
+  if self.entrances == nil then return nil end
+  local res = list.map(self.entrances, function(e) return e:convertToEntrance(memory) end)
+  return res
+end
+
+function getAllEntranceCoordinates(memory)
+  local res = {}
+  for i, meta in pairs(STATIC_MAP_METADATA) do
+    res[i] = meta:readEntranceCoordinates(memory)
+  end
+  return res
+end
+
+mockEntranceCoordinates = {
+   [2]= {Entrance(Point( 2, 19, 10), Point(1, 54,  87), ImportantLocationType.CHARLOCK)},
+   [3]= {Entrance(Point( 3, 10,  0), Point(1, 29, 112), ImportantLocationType.Town)},
+   [4]= {Entrance(Point( 4, 29, 11), Point(1, 85,  90), ImportantLocationType.TANTEGEL)},
+   [7]= {Entrance(Point( 7, 23, 19), Point(1, 55,  67), ImportantLocationType.Town)},
+   [8]= {Entrance(Point( 8, 15,  0), Point(1, 98,  98), ImportantLocationType.Town)},
+   [9]= {Entrance(Point( 9, 14,  0), Point(1, 74, 108), ImportantLocationType.Town)},
+   [10]={Entrance(Point(10, 15,  5), Point(1, 36,  44), ImportantLocationType.Town)},
+   [11]={Entrance(Point(11, 14, 29), Point(1, 74, 110), ImportantLocationType.Town)},
+   [12]={Entrance(Point(12,  4,  0), Point(4, 29,  29), ImportantLocationType.CAVE)},
+   [13]={Entrance(Point(13,  9,  4), Point(1, 58, 106), ImportantLocationType.CAVE)},
+   [14]={Entrance(Point(14,  4,  0), Point(1, 82,   8), ImportantLocationType.CAVE)},
+   [21]={Entrance(Point(21,  0,  0), Point(1, 90,  78), ImportantLocationType.CAVE), Entrance(Point(21, 29, 0), Point(1, 93, 63), ImportantLocationType.CAVE)},
+   [22]={Entrance(Point(22,  7,  0), Point(1, 96,  99), ImportantLocationType.CAVE)},
+   [24]={Entrance(Point(24, 11,  6), Point(9, 19,   0), ImportantLocationType.CAVE)},
+   [28]={Entrance(Point(28,  0,  0), Point(1, 86,  84), ImportantLocationType.CAVE)}
+  }
+
+IMMOBILE_NPCS = {
+  [Charlock]           = {},
+  [Hauksness]          = {},
+  [Tantegel]           = {{2,8}, {8,6}, {8,8}, {27,5}, {26,15}, {9,27}, {12,27}, {15, 20}},
+  [TantegelThroneRoom] = {{3,6}, {5,6}},
+  [CharlockThroneRoom] = {},
+  [Kol]                = {},
+  [Brecconary]         = {{1,13}, {4,7}, {10,26}, {20,23}, {28,1}},
+  [Garinham]           = {{2,17}, {9,6}, {14,1}},
+  [Cantlin]            = {{0,0}},
+  [Rimuldar]           = {{2,4}, {27,0}},
+  [TantegelBasement]   = {},
+  [NorthernShrine]     = {},
+  [SouthernShrine]     = {},
+  [CharlockCaveLv1]    = {},
+  [CharlockCaveLv2]    = {},
+  [CharlockCaveLv3]    = {},
+  [CharlockCaveLv4]    = {},
+  [CharlockCaveLv5]    = {},
+  [CharlockCaveLv6]    = {},
+  [SwampCave]          = {},
+  [MountainCaveLv1]    = {},
+  [MountainCaveLv2]    = {},
+  [GarinsGraveLv1]     = {},
+  [GarinsGraveLv2]     = {},
+  [GarinsGraveLv3]     = {},
+  [GarinsGraveLv4]     = {},
+  [ErdricksCaveLv1]    = {},
+  [ErdricksCaveLv2]    = {},
+}
+
+function getImmobileNPCsForMap(mapId)
+  if IMMOBILE_NPCS[mapId] == nil then return {} end
+  return list.map(IMMOBILE_NPCS[mapId], function(xy) return Point(mapId, xy[1], xy[2]) end)
+end
+
+
+function StaticMap:resetWarps (allWarps)
+  self.warps = getWarpsForMap(self.mapId, allWarps)
+end
+
+function StaticMap:getTileSet ()
+  return self.mapId < 15 and NON_DUNGEON_TILES or DUNGEON_TILES
+end
+
+function StaticMap:getTileAt(x, y)
+  return self:getTileSet()[self.rows[y][x]]
+end
+
+function StaticMap:setTileAt(x, y, newTileId)
+  self.rows[y][x] = newTileId
+end
+
+function StaticMap:childrenIds()
+  if     self.mapId ==  2 then return {6,15,16,17,18,19,20}
+  elseif self.mapId ==  4 then return {5}
+  elseif self.mapId ==  5 then return {4}
+  elseif self.mapId == 22 then return {23}
+  elseif self.mapId == 24 then return {25,26,27}
+  elseif self.mapId == 28 then return {29}
+  else return {}
+  end
+end
+
+function StaticMap:markSeenByPlayer(allStaticMaps)
+  log.debug("now seen by player: ", self.mapName)
+  self.seenByPlayer = true
+  for _,childId in pairs(self:childrenIds()) do
+    log.debug("now seen by player: ", allStaticMaps[childId].mapName)
+    allStaticMaps[childId].seenByPlayer = true
+  end
+end
+
+PRINT_TILE_NAME    = 1
+PRINT_TILE_NO_KEYS = 2
+PRINT_TILE_KEYS    = 3
+
+function StaticMap:__tostring (printStrat)
+  function printTile(t)
+    if printStrat == PRINT_TILE_NAME or printStrat == nil then return t.name
+    elseif printStrat == PRINT_TILE_NO_KEYS then return t.walkable and "O" or " "
+    else return (t.walkableWithKeys or t.walkable) and "O" or " "
+    end
+  end
+
+  local tileSet = self:getTileSet()
+  local res = ""
+  for y = 0,self.height-1 do
+    local row = ""
+    for x = 0,self.width-1 do
+      local t = tileSet[self.rows[y][x]]
+      row = row .. " | " .. (printTile(t))
+    end
+    res = res .. row .. " |\n"
+  end
+  return self.mapName .. "\n" .. res
+end
+
+function StaticMap:writeTileNamesToFile (file)
+  file:write(self:__tostring() .. "\n")
+end
+
+MAP_DIRECTORY = "/Users/joshcough/work/dwrandomizer_ai/maps/"
+STATIC_MAPS_FILE = MAP_DIRECTORY .. "static_maps.txt"
+
+function StaticMap:saveIdsToFile ()
+  local mapFileName = MAP_DIRECTORY .. self.mapName
+  table.save(self.rows, mapFileName)
+end
+
+function StaticMap:saveGraphToFile ()
+  local graphNoKeysFileName = MAP_DIRECTORY .. self.mapName .. ".graph"
+  local graphWithKeysFileName = MAP_DIRECTORY .. self.mapName .. ".with_keys.graph"
+  table.save(self:mkGraph(false), graphNoKeysFileName)
+  table.save(self:mkGraph(true), graphWithKeysFileName)
+end
+
+-- TODO: i dont really think the next two functions work anymore.
+function quickPrintGraph(mapId, allWarps)
+  log.debug(loadStaticMapFromFile(mapId, allWarps):mkGraph(false))
+  log.debug(loadStaticMapFromFile(mapId, allWarps):mkGraph(true))
+end
+
+function loadStaticMapFromFile (mapId, allWarps)
+  if mapId < 2 then return nil end
+  local mapData = STATIC_MAP_METADATA[mapId]
+  local mapName = mapData.name
+  local mapFileName = MAP_DIRECTORY .. mapName
+  -- TODO: these overworld coordinates are wrong. we definitely have a problem
+  -- reading from files now.
+  return StaticMap(mapId, mapName, mapData.mapType, mapData.overworldCoordinates,
+                   mapData.size.width, mapData.size.height, table.load(mapFileName), allWarps)
+end
+
+function readAllStaticMaps(memory, allWarps)
+  local res = {}
+  for i = 2, 29 do
+    res[i] = readStaticMapFromRom(memory, i, allWarps)
+  end
+  return res
+end
+
+function saveStaticMaps(memory, allWarps)
+  local file = io.open(STATIC_MAPS_FILE, "w")
+  local maps = readAllStaticMaps(memory, allWarps)
+  for i = 2, 29 do
+    maps[i]:writeTileNamesToFile(file)
+    maps[i]:saveIdsToFile()
+    maps[i]:saveGraphToFile()
+  end
+  file:close()
+end
+ */
