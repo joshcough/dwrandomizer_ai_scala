@@ -17,6 +17,14 @@ object Stats {
 import Stats._
 
 case class Stats(level: Level,
-                 currentHP: CurrentHP, maxHP: MaxHP, currentMP: CurrentMP, maxMP: MaxMP,
-                 gold: Gold, xp: Xp,
-                 strength: Strength, agility: Agility, attackPower: AttackPower, defensePower: DefensePower)
+                 currentHP: CurrentHP,
+                 maxHP: MaxHP,
+                 currentMP: CurrentMP,
+                 maxMP: MaxMP,
+                 gold: Gold,
+                 xp: Xp,
+                 strength: Strength,
+                 agility: Agility,
+                 attackPower: AttackPower,
+                 defensePower: DefensePower
+)
