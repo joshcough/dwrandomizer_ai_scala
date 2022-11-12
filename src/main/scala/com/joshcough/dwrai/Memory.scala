@@ -1,102 +1,139 @@
 package com.joshcough.dwrai
 
 import nintaco.api.API
-
 import Stats._
+import com.joshcough.dwrai.Bytes.{hiNibble, loNibble}
+import com.joshcough.dwrai.Chests.{ChestItem, chestItemsByByte}
+import com.joshcough.dwrai.Items.ItemInventory
 
 case class Memory(api: API) {
 
-  def readRAM(addr: Int): Byte = api.readCPU(addr).toByte
-  def writeRAM(addr: Int, value: Byte): Unit = api.writeCPU(addr, value)
+  def readRAM(addr: Address): Byte               = api.readCPU(addr.value).toByte
+  def writeRAM(addr: Address, value: Byte): Unit = api.writeCPU(addr.value, value)
 
-  def readRAM16(addr: Int): Short = api.readCPU16(addr).toShort
-  def writeRAM16(addr: Int, value: Short): Unit = api.writeCPU16(addr, value)
+  def readRAM16(addr: Address): Short               = api.readCPU16(addr.value).toShort
+  def writeRAM16(addr: Address, value: Short): Unit = api.writeCPU16(addr.value, value)
 
-  def readROM(addr: Int): Int = api.readPrgRom(addr)
-  def writeROM(addr: Int, value: Int): Unit = api.writePrgRom(addr, value)
+  def readROM(addr: Address): Int               = api.readPrgRom(addr.value)
+  def writeROM(addr: Address, value: Int): Unit = api.writePrgRom(addr.value, value)
 
   // we should separate the stuff above here into its own interface.
 
-  val OverWorldId: MapId = MapId(1)
-  val ENEMY_ID_ADDR: Int = 0x3c
+  val OverWorldId: MapId     = MapId(1)
+  val ENEMY_ID_ADDR: Address = Address(0x3c)
 
-  def getX: Byte = readRAM(0x8e)
-  def getY: Byte = readRAM(0x8f)
-  def getMapId: MapId = MapId(readRAM(0x45))
+  def getX: Byte         = readRAM(Address(0x8e))
+  def getY: Byte         = readRAM(Address(0x8f))
+  def getMapId: MapId    = MapId(readRAM(Address(0x45)))
   def getLocation: Point = Point(getMapId, getX, getY)
 
-  def getCoordinates: Point = Point(OverWorldId, readRAM(0xe114), readRAM(0xe11A))
+  def getCoordinates: Point = Point(OverWorldId, readRAM(Address(0xe114)), readRAM(Address(0xe11a)))
 
   // get the id of the current enemy, if it exists
   // no idea what gets returned if not in battle
-  def getEnemyId: Byte = readRAM(ENEMY_ID_ADDR)
+  def getEnemyId: Byte                = readRAM(ENEMY_ID_ADDR)
   def setEnemyId(enemyId: Byte): Unit = writeRAM(ENEMY_ID_ADDR, enemyId)
 
-  def getRadiantTimer: Byte = readRAM(0xDA)
-  def setRadiantTimer(n: Byte): Unit = writeRAM(0xDA, n)
-  def getRepelTimer: Byte = readRAM(0xDB)
-  def setRepelTimer(n: Byte): Unit = writeRAM(0xDB, n)
+  def getRadiantTimer: Byte          = readRAM(Address(0xda))
+  def setRadiantTimer(n: Byte): Unit = writeRAM(Address(0xda), n)
+  def getRepelTimer: Byte            = readRAM(Address(0xdb))
+  def setRepelTimer(n: Byte): Unit   = writeRAM(Address(0xdb), n)
 
   // DB10 - DB1F | "Return" placement code
   // The notes of dwr say that that block has the codes, but
   // I've narrowed it down to these exact addresses:
-  val RETURN_WARP_X_ADDR: Int = 0xDB15 // TODO: should all addresses be shorts?/////
-  val RETURN_WARP_Y_ADDR: Int = 0xDB1D
+  val RETURN_WARP_X_ADDR: Address = Address(0xdb15)
+  val RETURN_WARP_Y_ADDR: Address = Address(0xdb1d)
 
   def setReturnWarpLocation(x: Int, y: Int): Unit = {
     writeROM(RETURN_WARP_X_ADDR, x)
     writeROM(RETURN_WARP_Y_ADDR, y)
   }
 
-  def getNumberOfHerbs: Byte = readRAM(0xc0)
-  def getNumberOfKeys: Byte = readRAM(0xbf)
-  def getCurrentHP: CurrentHP = CurrentHP(readRAM(0xc5))
-  def getMaxHP: MaxHP = MaxHP(readRAM(0xca))
-  def getCurrentMP: CurrentMP = CurrentMP(readRAM(0xc6))
-  def getMaxMP: MaxMP = MaxMP(readRAM(0xcb))
-  def getXP: Xp = Xp(readRAM16(0xba))
-  def getGold: Gold = Gold(readRAM16(0xbc))
-  def getLevel: Level = Level(readRAM(0xc7))
-  def getStrength: Strength = Strength(readRAM(0xc8))
-  def getAgility: Agility = Agility(readRAM(0xc9))
-  def getAttackPower: AttackPower = AttackPower(readRAM(0xcc))
-  def getDefensePower: DefensePower = DefensePower(readRAM(0xcd))
+  def getNumberOfHerbs: Byte        = readRAM(Address(0xc0))
+  def getNumberOfKeys: Byte         = readRAM(Address(0xbf))
+  def getCurrentHP: CurrentHP       = CurrentHP(readRAM(Address(0xc5)))
+  def getMaxHP: MaxHP               = MaxHP(readRAM(Address(0xca)))
+  def getCurrentMP: CurrentMP       = CurrentMP(readRAM(Address(0xc6)))
+  def getMaxMP: MaxMP               = MaxMP(readRAM(Address(0xcb)))
+  def getXP: Xp                     = Xp(readRAM16(Address(0xba)))
+  def getGold: Gold                 = Gold(readRAM16(Address(0xbc)))
+  def getLevel: Level               = Level(readRAM(Address(0xc7)))
+  def getStrength: Strength         = Strength(readRAM(Address(0xc8)))
+  def getAgility: Agility           = Agility(readRAM(Address(0xc9)))
+  def getAttackPower: AttackPower   = AttackPower(readRAM(Address(0xcc)))
+  def getDefensePower: DefensePower = DefensePower(readRAM(Address(0xcd)))
 
-  def getStats: Stats = Stats(getLevel, getCurrentHP, getMaxHP, getCurrentMP, getMaxMP, getGold, getXP, getStrength, getAgility, getAttackPower, getDefensePower)
-
-  def getLevels: List[Int] = Iterator.unfold(0xF35B){ i =>
-    if (i <= 0xF395) Some((readROM(i + 1) * 256 + readROM(i), i + 2)) else None
-  }.toList
-
-  def all: Map[String, Any] = Map(
-    "nrHerbs" -> getNumberOfHerbs,
-    "nrKeys" -> getNumberOfKeys,
-    "loc" -> getLocation,
-    "levels" -> getLevels,
-    "stats" -> getStats
+  def getStats: Stats = Stats(
+    getLevel,
+    getCurrentHP,
+    getMaxHP,
+    getCurrentMP,
+    getMaxMP,
+    getGold,
+    getXP,
+    getStrength,
+    getAgility,
+    getAttackPower,
+    getDefensePower
   )
 
+  def getLevels: List[Int] = Iterator
+    .unfold(Address(0xf35b)) { i: Address =>
+      if (i.value <= 0xf395)
+        Some((readROM(Address(i.value + 1)) * 256 + readROM(i), Address(i.value + 2)))
+      else None
+    }
+    .toList
+
+  def debug: Map[String, Any] = Map(
+    "nrHerbs" -> getNumberOfHerbs,
+    "nrKeys"  -> getNumberOfKeys,
+    "loc"     -> getLocation,
+    "levels"  -> getLevels,
+    "stats"   -> getStats,
+    "chests"  -> readChests,
+    "items"   -> getItems
+  )
+
+  // TODO: no way to know if this works until we are in the game.
+  def readChests: Map[Point, ChestItem] = {
+    val firstChestAddr = Address(0x5ddd - 16)
+    Range(0, 30).map { i =>
+      val addr   = firstChestAddr + i * 4
+      val mapId  = MapId(readROM(addr))
+      val x      = readROM(addr + 1)
+      val y      = readROM(addr + 2)
+      val itemId = readROM(addr + 3)
+      Point(mapId, x, y) -> chestItemsByByte(itemId)
+    // log.debug("chest", chest)
+    }.toMap
+  }
+
+  def getItemNumberOfHerbs: Byte = readRAM(Address(0xc0))
+  def getItemNumberOfKeys: Byte  = readRAM(Address(0xbf))
+
+  def getItems: ItemInventory = {
+    val b12: Byte = readRAM(Address(0xc1))
+    val b34: Byte = readRAM(Address(0xc2))
+    val b56: Byte = readRAM(Address(0xc3))
+    val b78: Byte = readRAM(Address(0xc4))
+    val slots: List[Int] = List(
+      loNibble(b12),
+      hiNibble(b12),
+      loNibble(b34),
+      hiNibble(b34),
+      loNibble(b56),
+      hiNibble(b56),
+      loNibble(b78),
+      hiNibble(b78)
+    )
+    ItemInventory.fromSlots(getItemNumberOfHerbs, getItemNumberOfKeys, slots)
+  }
+
   /*
-  def getItems()
-    val slots = {}
-    val b12 = readRAM(0xc1)
-    slots[1] = loNibble(b12)
-    slots[2] = hiNibble(b12)
-    val b34 = readRAM(0xc2)
-    slots[3] = loNibble(b34)
-    slots[4] = hiNibble(b34)
-    val b56 = readRAM(0xc3)
-    slots[5] = loNibble(b56)
-    slots[6] = hiNibble(b56)
-    val b78 = readRAM(0xc4)
-    slots[7] = loNibble(b78)
-    slots[8] = hiNibble(b78)
-    = Items(self:getItemNumberOfHerbs(), self:getItemNumberOfKeys(), slots)
-
-
   def getStatuses()
     = Statuses(readRAM(0xcf), readRAM(0xdf))
-
 
   def getEquipment()
     val b = readRAM(0xbe)
@@ -105,29 +142,12 @@ case class Memory(api: API) {
     val shieldId = bitwise_and(b, 3)
     = Equipment(weaponId, armorId, shieldId)
 
-  def readStats()
-    = Stats(
-      self:getCurrentHP(),
-      self:getMaxHP(),
-      self:getCurrentMP(),
-      self:getMaxMP(),
-      self:getXP(),
-      self:getGold(),
-      self:getLevel(),
-      self:getStrength(),
-      self:getAgility(),
-      self:getAttackPower(),
-      self:getDefensePower()
-    )
-
   def spells()
     = Spells(readRAM(0xce),  readRAM(0xcf))
-
 
   def readPlayerData()
     = PlayerData(self:getLocation(), readStats(), self:getEquipment(),
                       self:spells(), self:getItems(), self:getStatuses(), readLevels())
-
 
   -- ShopItemsTbl:
   -- ;Koll weapons and armor shop.
@@ -192,25 +212,6 @@ case class Memory(api: API) {
       readSpot(0xe13d, Point(Kol, 9, 6)),
       readSpot(0xe153, Point(Hauksness, 18, 12))
     )
-
-
-  def readChests()
-    val chests = {}
-    -- 5DDD - 5E58  | Chest Data  | Four bytes long: Map,X,Y,Contents
-    val firstChestAddr = 0x5ddd
-    for i = 0,30 do
-      val addr = firstChestAddr + i * 4
-      val mapId = readROM(addr)
-      val x = readROM(addr + 1)
-      val y = readROM(addr + 2)
-      val contents = readROM(addr + 3)
-      val chest = Chest(Point(mapId, x, y), CHEST_CONTENT[contents])
-      -- log.debug("chest", chest)
-      table.insert(chests, chest)
-    end
-    = Chests(chests)
-
-
 
   -- 0x51 - ??       | NPC Data                | 16 bits ------------------------->   3 bits -> sprite
   --                 |                         | 5 bits -> x coordinate
