@@ -21,7 +21,7 @@ object Interpreter {
           "Main",
           List(
             Scripts.GameStartMenuScript,
-            WaitUntil(Eq(GetMapId, Value(MapIdLit(TantegelThroneRoomId)))),
+            WaitUntil(OnMap(TantegelThroneRoomId)),
             DebugScript("We should now be in front of the king!")
           )
         )
@@ -42,7 +42,9 @@ case class Interpreter(api: API,
       case HoldButtonScript(button, nrFrames) =>
         api.writeGamepad(0, button.underlying, true)
         waitForNFrames(nrFrames)
-      case HoldButtonUntilScript(button, condition) => () // zzz todo
+      case HoldButtonUntilScript(button, condition) =>
+        api.writeGamepad(0, button.underlying, true)
+        waitUntil(condition)
       case Consecutive(_, scripts)                  => scripts.foreach(interpret)
       case WaitUntil(condition)                     => waitUntil(condition)
       case DebugScript(msg)                         => println(s"DEBUG: $msg")

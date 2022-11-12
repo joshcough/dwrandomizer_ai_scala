@@ -68,6 +68,8 @@ Contains = class(ConditionScript, function(a, container, v)
 end)
    */
 
+  def OnMap(mapId: MapId): Expr = Eq(GetMapId, Value(MapIdLit(mapId)))
+
   val GameStartMenuScript: Consecutive = Consecutive(
     "Game start menu",
     List(
