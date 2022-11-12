@@ -1,8 +1,10 @@
 package com.joshcough.dwrai
 
 import nintaco.api.API
-
 import Stats._
+import com.joshcough.dwrai.Bytes.{hiNibble, loNibble}
+import com.joshcough.dwrai.Chests.{ChestItem, chestItemsByByte}
+import com.joshcough.dwrai.Items.ItemInventory
 
 case class Memory(api: API) {
 
@@ -84,35 +86,54 @@ case class Memory(api: API) {
     }
     .toList
 
-  def all: Map[String, Any] = Map(
+  def debug: Map[String, Any] = Map(
     "nrHerbs" -> getNumberOfHerbs,
     "nrKeys"  -> getNumberOfKeys,
     "loc"     -> getLocation,
     "levels"  -> getLevels,
-    "stats"   -> getStats
+    "stats"   -> getStats,
+    "chests"  -> readChests,
+    "items"   -> getItems
   )
 
+  // TODO: no way to know if this works until we are in the game.
+  def readChests: Map[Point, ChestItem] = {
+    val firstChestAddr = Address(0x5ddd - 16)
+    Range(0, 30).map { i =>
+      val addr   = firstChestAddr + i * 4
+      val mapId  = MapId(readROM(addr))
+      val x      = readROM(addr + 1)
+      val y      = readROM(addr + 2)
+      val itemId = readROM(addr + 3)
+      Point(mapId, x, y) -> chestItemsByByte(itemId)
+    // log.debug("chest", chest)
+    }.toMap
+  }
+
+  def getItemNumberOfHerbs: Byte = readRAM(Address(0xc0))
+  def getItemNumberOfKeys: Byte  = readRAM(Address(0xbf))
+
+  def getItems: ItemInventory = {
+    val b12: Byte = readRAM(Address(0xc1))
+    val b34: Byte = readRAM(Address(0xc2))
+    val b56: Byte = readRAM(Address(0xc3))
+    val b78: Byte = readRAM(Address(0xc4))
+    val slots: List[Int] = List(
+      loNibble(b12),
+      hiNibble(b12),
+      loNibble(b34),
+      hiNibble(b34),
+      loNibble(b56),
+      hiNibble(b56),
+      loNibble(b78),
+      hiNibble(b78)
+    )
+    ItemInventory.fromSlots(getItemNumberOfHerbs, getItemNumberOfKeys, slots)
+  }
+
   /*
-  def getItems()
-    val slots = {}
-    val b12 = readRAM(0xc1)
-    slots[1] = loNibble(b12)
-    slots[2] = hiNibble(b12)
-    val b34 = readRAM(0xc2)
-    slots[3] = loNibble(b34)
-    slots[4] = hiNibble(b34)
-    val b56 = readRAM(0xc3)
-    slots[5] = loNibble(b56)
-    slots[6] = hiNibble(b56)
-    val b78 = readRAM(0xc4)
-    slots[7] = loNibble(b78)
-    slots[8] = hiNibble(b78)
-    = Items(self:getItemNumberOfHerbs(), self:getItemNumberOfKeys(), slots)
-
-
   def getStatuses()
     = Statuses(readRAM(0xcf), readRAM(0xdf))
-
 
   def getEquipment()
     val b = readRAM(0xbe)
@@ -121,29 +142,12 @@ case class Memory(api: API) {
     val shieldId = bitwise_and(b, 3)
     = Equipment(weaponId, armorId, shieldId)
 
-  def readStats()
-    = Stats(
-      self:getCurrentHP(),
-      self:getMaxHP(),
-      self:getCurrentMP(),
-      self:getMaxMP(),
-      self:getXP(),
-      self:getGold(),
-      self:getLevel(),
-      self:getStrength(),
-      self:getAgility(),
-      self:getAttackPower(),
-      self:getDefensePower()
-    )
-
   def spells()
     = Spells(readRAM(0xce),  readRAM(0xcf))
-
 
   def readPlayerData()
     = PlayerData(self:getLocation(), readStats(), self:getEquipment(),
                       self:spells(), self:getItems(), self:getStatuses(), readLevels())
-
 
   -- ShopItemsTbl:
   -- ;Koll weapons and armor shop.
@@ -208,25 +212,6 @@ case class Memory(api: API) {
       readSpot(0xe13d, Point(Kol, 9, 6)),
       readSpot(0xe153, Point(Hauksness, 18, 12))
     )
-
-
-  def readChests()
-    val chests = {}
-    -- 5DDD - 5E58  | Chest Data  | Four bytes long: Map,X,Y,Contents
-    val firstChestAddr = 0x5ddd
-    for i = 0,30 do
-      val addr = firstChestAddr + i * 4
-      val mapId = readROM(addr)
-      val x = readROM(addr + 1)
-      val y = readROM(addr + 2)
-      val contents = readROM(addr + 3)
-      val chest = Chest(Point(mapId, x, y), CHEST_CONTENT[contents])
-      -- log.debug("chest", chest)
-      table.insert(chests, chest)
-    end
-    = Chests(chests)
-
-
 
   -- 0x51 - ??       | NPC Data                | 16 bits ------------------------->   3 bits -> sprite
   --                 |                         | 5 bits -> x coordinate

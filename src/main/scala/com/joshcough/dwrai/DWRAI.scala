@@ -1,21 +1,30 @@
 package com.joshcough.dwrai
 
-import com.joshcough.dwrai.StaticMaps.{STATIC_MAP_METADATA, StaticMap}
-import nintaco.api.ApiSource
+import nintaco.api.{API, ApiSource}
 
 object DWRAI {
   def main(args: Array[String]): Unit = {
-    val api = ApiSource.getAPI
-    val mem = Memory(api)
-
-    api.addActivateListener(() =>
-      //println(Overworld.readOverworldFromROM(mem).map(_.mkString(" | ")).mkString("\n"))
-      STATIC_MAP_METADATA.values.toList
-        .sortWith { case (l, r) => l.id.value < r.id.value }
-        .foreach(x => println(StaticMap.readStaticMapFromRom(mem, x, List()).quickPrint))
-    )
+    val api: API    = ApiSource.getAPI
+    val mem: Memory = Memory(api)
+    val interpreter = Interpreter(api, mem, Controller(api, mem))
 
     api.run()
+
+    //debugSomeStuff(api, mem)
+    new Thread(new Runnable() {
+      def run(): Unit = interpreter.interpret(Scripts.GameStartMenuScript)
+    }).start()
+  }
+
+  def debugSomeStuff(api: API, memory: Memory): Unit = {
+    import com.joshcough.dwrai.StaticMaps.{STATIC_MAP_METADATA, StaticMap}
+    api.addActivateListener { () =>
+      memory.debug.foreach(println)
+      println(Overworld.readOverworldFromROM(memory).map(_.mkString(" | ")).mkString("\n"))
+      STATIC_MAP_METADATA.values.toList
+        .sortWith { case (l, r) => l.id.value < r.id.value }
+        .foreach(x => println(StaticMap.readStaticMapFromRom(memory, x, List()).quickPrint))
+    }
   }
 }
 
