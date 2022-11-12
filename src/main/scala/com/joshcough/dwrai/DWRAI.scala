@@ -3,17 +3,11 @@ package com.joshcough.dwrai
 import nintaco.api.{API, ApiSource}
 
 object DWRAI {
+
   def main(args: Array[String]): Unit = {
-    val api: API    = ApiSource.getAPI
-    val mem: Memory = Memory(api)
-    val interpreter = Interpreter(api, mem, Controller(api, mem))
-
+    val api: API = ApiSource.getAPI
     api.run()
-
-    //debugSomeStuff(api, mem)
-    new Thread(new Runnable() {
-      def run(): Unit = interpreter.interpret(Scripts.GameStartMenuScript)
-    }).start()
+    Interpreter.run(api)
   }
 
   def debugSomeStuff(api: API, memory: Memory): Unit = {
