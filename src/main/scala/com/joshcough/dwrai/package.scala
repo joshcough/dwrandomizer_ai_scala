@@ -35,10 +35,22 @@ package object dwrai {
     val GarinsGraveLv4Id: MapId     = MapId(27)
     val ErdricksCaveLv1Id: MapId    = MapId(28)
     val ErdricksCaveLv2Id: MapId    = MapId(29)
-
   }
 
-  case class Point(mapId: MapId, x: Int, y: Int)
+  object Point {
+    implicit val pointOrdering: Ordering[Point] = (a: Point, b: Point) => a.compare(b)
+  }
+
+  case class Point(mapId: MapId, x: Int, y: Int) {
+    def <(p: Point): Boolean = compare(p) < 0
+
+    def compare(p: Point): Int =
+      (mapId.value.compare(p.mapId.value), x.compare(p.x), y.compare(p.y)) match {
+        case (0, 0, y_) => y_
+        case (0, x_, _) => x_
+        case (i, _, _)  => i
+      }
+  }
 
   object Bytes {
     // HI_NIBBLE(b) (((b) >> 4) & 0x0F)

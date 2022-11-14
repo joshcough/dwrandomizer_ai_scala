@@ -20,9 +20,10 @@ object Interpreter {
         Consecutive(
           "Main",
           List(
-            Scripts.GameStartMenuScript,
-            WaitUntil(OnMap(TantegelThroneRoomId)),
-            DebugScript("We should now be in front of the king!")
+            DebugScript("starting interpreter"),
+//            Scripts.GameStartMenuScript,
+//            WaitUntil(OnMap(TantegelThroneRoomId)),
+//            DebugScript("We should now be in front of the king!")
           )
         )
       )
@@ -37,7 +38,7 @@ case class Interpreter(api: API,
 ) {
 
   def interpret(s: Scripts.Script): Unit = {
-    println(s"interpreting: $s")
+    Logging.log(s"interpreting: $s")
     s match {
       case HoldButtonScript(button, nrFrames) =>
         api.writeGamepad(0, button.underlying, true)
@@ -45,9 +46,9 @@ case class Interpreter(api: API,
       case HoldButtonUntilScript(button, condition) =>
         api.writeGamepad(0, button.underlying, true)
         waitUntil(condition)
-      case Consecutive(_, scripts)                  => scripts.foreach(interpret)
-      case WaitUntil(condition)                     => waitUntil(condition)
-      case DebugScript(msg)                         => println(s"DEBUG: $msg")
+      case Consecutive(_, scripts) => scripts.foreach(interpret)
+      case WaitUntil(condition)    => waitUntil(condition)
+      case DebugScript(msg)        => Logging.log(s"DEBUG: $msg")
     }
   }
 
@@ -91,9 +92,9 @@ case class Interpreter(api: API,
   private def waitForNFrames(nrFrames: Int): Unit = waitUntilFrame(api.getFrameCount + nrFrames)
 
   @tailrec private def waitUntilFrame(frameToWaitUntil: Int): Unit = {
-    // println(s"Waiting until $frameToWaitUntil, api.getFrameCount is: ${api.getFrameCount}")
+    // Logging.log(s"Waiting until $frameToWaitUntil, api.getFrameCount is: ${api.getFrameCount}")
     val currentFrame = frameQueue.take()
-    // println(s"currentFrame is: $currentFrame")
+    // Logging.log(s"currentFrame is: $currentFrame")
     if (currentFrame < frameToWaitUntil) waitUntilFrame(frameToWaitUntil) else ()
   }
 
