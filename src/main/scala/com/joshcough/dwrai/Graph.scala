@@ -6,7 +6,7 @@ object Graph {
 
   def neighborsAt(staticMap: StaticMap, xIn: Int, yIn: Int): Set[Neighbor] = {
     def isWalkable(x: Int, y: Int): Boolean = staticMap.isWalkableAt(x, y)
-    def isDoor(x: Int, y: Int): Boolean = staticMap.getTileAt(x, y).isDoor
+    def isDoor(x: Int, y: Int): Boolean     = staticMap.getTileAt(x, y).isDoor
 
     //         x,y-1
     // x-1,y   x,y     x+1,y
@@ -18,7 +18,8 @@ object Graph {
         def f(inBounds: Boolean, x_ : Int, y_ : Int, dir: Direction): List[Neighbor] = {
           // TODO: this isDoor call is just for testing
           // all the walkable shit has to get redone i think.
-          if (inBounds && (isWalkable(x_, y_) || isDoor(x_, y_))) List(Neighbor(Point(staticMap.mapId, x_, y_), dir))
+          if (inBounds && (isWalkable(x_, y_) || isDoor(x_, y_)))
+            List(Neighbor(Point(staticMap.mapId, x_, y_), dir))
           else List()
         }
 
@@ -65,13 +66,13 @@ object Graph {
   }
 
   def mkStaticMapGraph(staticMap: StaticMap): Graph =
-    Graph(staticMap.rows.zipWithIndex.map { case (r, y) =>
+    Graph(Map(staticMap.mapId -> staticMap.rows.zipWithIndex.map { case (r, y) =>
       r.zipWithIndex.map { case (_, x) =>
         val point = Point(staticMap.mapId, x, y)
         val node  = GraphNode.known(neighborsAt(staticMap, x, y), staticMap.getTileAt(x, y).isDoor)
         (point, node)
       }
-    })
+    }))
 }
 
 sealed trait GraphNodeType
@@ -105,15 +106,17 @@ case class Neighbor(point: Point, dir: Direction) {
   def isAt(p: Point): Boolean = p == point
 }
 
-case class Graph(nodes: IndexedSeq[IndexedSeq[(Point, GraphNode)]]) {
+case class Graph(nodes: Map[MapId, IndexedSeq[IndexedSeq[(Point, GraphNode)]]]) {
   // def prettyPrint: String = ...
 
-  def quickPrint: String = nodes.flatMap(_.map(_.toString)).mkString("\n")
+  private val flatRepresentation: Map[Point, GraphNode] = nodes.toList.flatMap { case (_, arr) =>
+    arr.flatten
+  }.toMap
 
-  private val flatRepresentation: Map[Point, GraphNode] = nodes.flatten.toMap
+  def quickPrint: String = flatRepresentation.toList.mkString("\n")
 
   def getNodeAtPoint(p: Point): Option[GraphNode] = flatRepresentation.get(p)
-  def isDoor(p: Point): Boolean = getNodeAtPoint(p).exists(_.isDoor)
+  def isDoor(p: Point): Boolean                   = getNodeAtPoint(p).exists(_.isDoor)
 
   def staticMapDijkstra(src: Point, dests: List[Point], nrKeys: Int): List[Path] =
     dijkstra(src, dests, nrKeys, _ => 1)
@@ -145,14 +148,12 @@ case class Graph(nodes: IndexedSeq[IndexedSeq[(Point, GraphNode)]]) {
       }
       case class QueueNode(point: Point, weight: Int)
 
-      val distanceTo: mutable.Map[Point, Int] = mutable.Map()
+      val distanceTo: mutable.Map[Point, Int] = mutable.Map(src -> 0)
       val trail: mutable.Map[Point, Neighbor] = mutable.Map()
 
       def getDistanceTo(p: Point): Int = distanceTo.getOrElse(p, Int.MaxValue)
 
-      val pq: mutable.PriorityQueue[QueueNode] = mutable.PriorityQueue[QueueNode]()
-      pq.enqueue(QueueNode(src, 0))
-      distanceTo.put(src, 0)
+      val pq: mutable.PriorityQueue[QueueNode] = mutable.PriorityQueue[QueueNode](QueueNode(src, 0))
 
       while (pq.nonEmpty) {
         val current           = pq.dequeue()
@@ -174,32 +175,44 @@ case class Graph(nodes: IndexedSeq[IndexedSeq[(Point, GraphNode)]]) {
     // Create path string from table of previous nodes
     def followTrailToDest(trail: Map[Point, Neighbor])(dest: Point): List[PathNode] = {
       Iterator
-        .unfold[PathNode, Option[Neighbor]](trail.get(dest))(_.map { prev =>
-          if (src == prev.point) (PathNode(src, prev.dir, isDoor = false), None)
-          else (PathNode(prev.point, prev.dir, isDoor(prev.point)), trail.get(prev.point))
-        })
-        .toList.reverse
+        .unfold[PathNode, (Point, Option[Neighbor])]((dest, trail.get(dest))) { case (curr, op) =>
+          op.map { prev =>
+            if (src == prev.point)
+              (PathNode(prev.point, curr, prev.dir, isDoor = false), (prev.point, None))
+            else
+              (
+                PathNode(prev.point, curr, prev.dir, isDoor(prev.point)),
+                (prev.point, trail.get(prev.point))
+              )
+          }
+        }
+        .toList
+        .reverse
     }
 
     val pathBuilder: Point => List[PathNode] = followTrailToDest(trail.trail)(_)
     dests
-      .map { dest => Path(src, dest, trail.weights(dest), pathBuilder(dest), 0) }
+      .map { dest =>
+        Path(src, dest, trail.weights(dest), pathBuilder(dest), 0)
+      }
       .sortWith(_.weight < _.weight)
   }
 }
 
-case class PathNode(point: Point, dir: Direction, isDoor: Boolean)
+case class PathNode(from: Point, to: Point, dir: Direction, isDoor: Boolean)
 
 // TODO: in the lua code we had pathBeforeOverworld and pathRest
 case class Path(src: Point, dest: Point, weight: Int, path: List[PathNode], nrKeysRequired: Int) {
   def isEmpty: Boolean = path.isEmpty
-  def convertPathToCommands: List[MovementCommand] =
-    path.zip(path.drop(1)).flatMap { case (current, next) =>
-      if (next.isDoor) List(OpenDoorAt(next.point, current.dir), Move(current.point, next.point, current.dir))
-      else List(Move(current.point, next.point, current.dir))
-    }
+  def convertPathToCommands: List[MovementCommand] = {
+    path.flatMap(node =>
+      if (node.isDoor)
+        List(OpenDoorAt(node.to, node.dir), MoveCommand(node.from, node.to, node.dir))
+      else List(MoveCommand(node.from, node.to, node.dir))
+    )
+  }
 }
 
 sealed trait MovementCommand
-case class OpenDoorAt(p: Point, dir: Direction) extends MovementCommand
-case class Move(from: Point, to: Point, dir: Direction) extends MovementCommand
+case class OpenDoorAt(p: Point, dir: Direction)                extends MovementCommand
+case class MoveCommand(from: Point, to: Point, dir: Direction) extends MovementCommand
