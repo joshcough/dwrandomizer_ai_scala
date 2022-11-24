@@ -4,6 +4,8 @@ import com.joshcough.dwrai.Bytes._
 
 object Overworld {
 
+  val OverworldId = MapId(1)
+
   sealed trait OverworldTile
   object Grass    extends OverworldTile { override def toString: String = "Grass"    } // 0
   object Desert   extends OverworldTile { override def toString: String = "Desert"   } // 1

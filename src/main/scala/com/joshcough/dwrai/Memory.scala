@@ -98,7 +98,7 @@ case class Memory(api: API) {
 
   // TODO: no way to know if this works until we are in the game.
   def readChests: Map[Point, ChestItem] = {
-    val firstChestAddr = Address(0x5ddd - 16)
+    val firstChestAddr = Address(0x5ddd) - 16
     Range(0, 30).map { i =>
       val addr   = firstChestAddr + i * 4
       val mapId  = MapId(readROM(addr))

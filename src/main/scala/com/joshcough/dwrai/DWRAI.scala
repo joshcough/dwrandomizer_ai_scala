@@ -1,7 +1,5 @@
 package com.joshcough.dwrai
 
-import com.joshcough.dwrai.MapId.TantegelThroneRoomId
-import com.joshcough.dwrai.Scripts.ThroneRoomOpeningGame
 import com.joshcough.dwrai.StaticMapMetadata.STATIC_MAP_METADATA
 import nintaco.api.{API, ApiSource}
 
@@ -12,29 +10,16 @@ object DWRAI {
     addDebuggingListener(api)
     api.run()
     println("time: " + System.currentTimeMillis())
-
-    val interpreter = Interpreter.run(
-      api,
-      Scripts.Consecutive(
-        "Main",
-        List(
-          Scripts.DebugScript("starting interpreter"),
-          Scripts.GameStartMenuScript,
-          Scripts.WaitUntil(Scripts.OnMap(TantegelThroneRoomId)),
-          ThroneRoomOpeningGame
-//          Scripts.DebugScript("We should now be in front of the king!"),
-//          Scripts.talkToKing,
-//          Scripts.Goto(Point(TantegelThroneRoomId, 1, 1))
-        )
-      )
-    )
-
+    Interpreter.runMain(api)
   }
 
   def addDebuggingListener(api: API): Unit = {
     api.addActivateListener { () =>
       // memory.debug.foreach(Logging.log)
       // Logging.log(Overworld.readOverworldFromROM(memory).map(_.mkString(" | ")).mkString("\n"))
+//      StaticMap.readAllStaticMapsFromRom(Memory(api)).foreach{ case (id, map) =>
+//        Logging.log((id, map.entrances))
+//      }
     }
   }
 

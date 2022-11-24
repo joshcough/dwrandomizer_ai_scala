@@ -2,7 +2,6 @@ package com.joshcough.dwrai
 
 import com.joshcough.dwrai.Button.{A, B, Down, Left, Right, Select, Start, Up}
 import com.joshcough.dwrai.MapId.TantegelThroneRoomId
-import com.joshcough.dwrai.Scripts._
 import com.joshcough.dwrai.StaticMapMetadata.STATIC_MAP_METADATA
 import nintaco.api.API
 
@@ -10,24 +9,36 @@ import java.util.concurrent.{ArrayBlockingQueue, BlockingQueue}
 import scala.annotation.tailrec
 
 object Interpreter {
-  def run(api: API, script: Script): Interpreter = {
-    val frameQueue: BlockingQueue[Int] = new ArrayBlockingQueue[Int](10000)
-    api.addFrameListener(() => frameQueue.put(api.getFrameCount))
+  def runMain(api:API): Unit = {
     val mem         = Memory(api)
     val controller  = Controller(api, mem)
-    val interpreter = Interpreter(api, mem, controller, frameQueue)
-
-    new Thread(new Runnable() { def run(): Unit = interpreter.interpret(script) }).start()
-
-    interpreter
+    val interpreter = Interpreter(api, mem, controller)
+    import interpreter.scripts._
+    interpreter.spawn(Consecutive(
+      "DWR AI",
+      List(
+        DebugScript("starting interpreter"),
+        GameStartMenuScript,
+        WaitUntil(OnMap(TantegelThroneRoomId)),
+        ThroneRoomOpeningGame
+      )
+    ))
   }
 }
 
-case class Interpreter(api: API,
-                       memory: Memory,
-                       controller: Controller,
-                       private val frameQueue: BlockingQueue[Int]
-) {
+case class Interpreter(api: API, memory: Memory, controller: Controller) {
+
+  val scripts = Scripts(memory)
+  import scripts._
+
+  val frameQueue: BlockingQueue[Int] = new ArrayBlockingQueue[Int](10000)
+  api.addFrameListener(() => frameQueue.put(api.getFrameCount))
+
+  val graph: Graph = Graph.mkGraph(memory)
+
+  def spawn(script: Script): Unit = {
+    new Thread(new Runnable() { def run(): Unit = interpret(script) }).start()
+  }
 
   def interpret(s: Script): Unit = {
     Logging.log(s"interpreting: $s")
@@ -54,22 +65,21 @@ case class Interpreter(api: API,
         )
 
       case Goto(p: Point) =>
-        val meta: StaticMapMetadata = STATIC_MAP_METADATA(TantegelThroneRoomId)
-        val map: StaticMap          = StaticMap.readStaticMapFromRom(memory, meta)
-        val graph: Graph            = Graph.mkStaticMapGraph(map)
         val path                    = graph.shortestPath(memory.getLocation, List(p), 0, _ => 1).head
-        Logging.log("PATH ----")
-        path.path.foreach(Logging.log)
         val commands = path.convertPathToCommands
-        Logging.log("COMMANDS ----")
-        commands.foreach(Logging.log)
-        commands
-          .map {
-            case OpenDoorAt(p, dir)          => Scripts.OpenDoor(p, dir)
-            case MoveCommand(from, to, Warp) => Scripts.TakeStairs(from, to)
-            case MoveCommand(from, to, dir)  => Move(from, to, dir)
-          }
-          .foreach(interpret)
+        val scripts = commands.map {
+          case OpenDoorAt(p, dir)          => OpenDoor(p, dir)
+          case MoveCommand(from, to, Warp) => TakeStairs(from, to)
+          case MoveCommand(from, to, dir)  => Move(from, to, dir)
+        }
+        //Logging.log("PATH ----")
+        //path.path.foreach(Logging.log)
+        //Logging.log("COMMANDS ----")
+        //commands.foreach(Logging.log)
+        //Logging.log("SCRIPTS ----")
+        //scripts.foreach(Logging.log)
+        //Logging.log("-------")
+        scripts.foreach(interpret)
     }
 
     def buttonFromDirection(dir: Direction): Button = dir match {

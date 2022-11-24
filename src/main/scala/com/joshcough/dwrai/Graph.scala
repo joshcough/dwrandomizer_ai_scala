@@ -73,6 +73,23 @@ object Graph {
         (point, node)
       }
     }))
+
+  def mkOverworldGraph(memory: Memory) = {
+    val overworld: Seq[IndexedSeq[Overworld.OverworldTile]] = Overworld.readOverworldFromROM(memory)
+    Graph(Map(Overworld.OverworldId -> overworld.zipWithIndex.map{ case (row, y) =>
+      row.zipWithIndex.map{ case (tile, x) =>
+        (Point(Overworld.OverworldId, x, y), GraphNode.unknown)
+      }
+    }))
+  }
+
+  // this makes the entire graph, overworld and all static maps
+  def mkGraph(memory: Memory): Graph = {
+    val staticMapGraphs: Iterable[Graph] =
+      StaticMap.readAllStaticMapsFromRom(memory).values.map(mkStaticMapGraph)
+    val overworldGraph = mkOverworldGraph(memory)
+    (Seq(overworldGraph) ++ staticMapGraphs).foldLeft(Graph(Map())){ _ + _ }
+  }
 }
 
 sealed trait GraphNodeType
@@ -106,10 +123,12 @@ case class Neighbor(point: Point, dir: Direction) {
   def isAt(p: Point): Boolean = p == point
 }
 
-case class Graph(nodes: Map[MapId, IndexedSeq[IndexedSeq[(Point, GraphNode)]]]) {
+case class Graph(nodes: Map[MapId, Seq[Seq[(Point, GraphNode)]]]) {
   // def prettyPrint: String = ...
 
-  private val flatRepresentation: Map[Point, GraphNode] = nodes.toList.flatMap { case (_, arr) =>
+  def +(other: Graph): Graph = Graph(nodes ++ other.nodes)
+
+  private lazy val flatRepresentation: Map[Point, GraphNode] = nodes.toList.flatMap { case (_, arr) =>
     arr.flatten
   }.toMap
 
@@ -204,13 +223,12 @@ case class PathNode(from: Point, to: Point, dir: Direction, isDoor: Boolean)
 // TODO: in the lua code we had pathBeforeOverworld and pathRest
 case class Path(src: Point, dest: Point, weight: Int, path: List[PathNode], nrKeysRequired: Int) {
   def isEmpty: Boolean = path.isEmpty
-  def convertPathToCommands: List[MovementCommand] = {
-    path.flatMap(node =>
-      if (node.isDoor)
+  def convertPathToCommands: List[MovementCommand] =
+    path.zip(path.drop(1).map(Option(_)) ++ List(None)).flatMap{ case (node, nextNode) =>
+      if (nextNode.exists(_.isDoor))
         List(OpenDoorAt(node.to, node.dir), MoveCommand(node.from, node.to, node.dir))
       else List(MoveCommand(node.from, node.to, node.dir))
-    )
-  }
+    }
 }
 
 sealed trait MovementCommand

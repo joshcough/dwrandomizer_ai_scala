@@ -1,9 +1,9 @@
 package com.joshcough.dwrai
 
 import com.joshcough.dwrai.Button._
-import com.joshcough.dwrai.MapId.TantegelThroneRoomId
+import com.joshcough.dwrai.MapId.{TantegelId, TantegelThroneRoomId}
 
-object Scripts {
+case class Scripts(memory: Memory) {
   sealed trait Script
 
   sealed trait Literal
@@ -58,14 +58,36 @@ object Scripts {
     "Open Door",
     List(
       OpenMenu,
-      Down.holdFor(2),
-      Down.holdFor(2),
-      Right.holdFor(2),
-      A.holdFor(20),
+      Down.holdFor(5),
+      WaitFor(1),
+      Down.holdFor(5),
+      WaitFor(1),
+      Right.holdFor(5),
+      WaitFor(1),
+      A.holdFor(5),
+      WaitFor(1),
+      A.holdFor(1),
+      WaitFor(1),
       SaveUnlockedDoor(p)
     )
   )
-  def TakeStairs(from: Point, to: Point): Script = ???
+
+
+  def TakeStairs(from: Point, to: Point): Script = Consecutive(
+    "Take Stairs",
+    List(
+      OpenMenu,
+      Down.holdFor(5),
+      WaitFor(1),
+      Down.holdFor(5),
+      WaitFor(1),
+      A.holdFor(5),
+      WaitFor(60)
+    )
+  )
+
+  // case class RepeatUntil(expr: Expr, script: Script) extends Script
+
   case class Move(from: Point, to: Point, dir: Direction) extends Script
 
   def OpenChestMenuing(point: Point): Script = Consecutive(
@@ -73,11 +95,11 @@ object Scripts {
     // TODO: see if we can reduce this 90 to 60 or 75. I don't remember.
     List(
       OpenMenu,
-      Up.holdFor(10),
+      Up.holdFor(5),
       WaitFor(1),
-      Right.holdFor(10),
+      Right.holdFor(5),
       WaitFor(1),
-      A.holdFor(90),
+      A.holdFor(30),
       WaitFor(1),
       A.holdFor(1),
       WaitFor(1),
@@ -93,35 +115,58 @@ object Scripts {
       Consecutive(s"Opening Chest at: $point", List(Goto(point), OpenChestMenuing(point)))
   )
 
+  /* TODO: this used to be this, but i dont have the entrances in here yet
+           so this needs to get done/redone somehow
+           it would be nice to have all the static maps in here to to avoid reading from the rom every time.
+           and probably the graphs and such too... so much to do.
+  function GotoOverworld(fromMap)
+    local p = entrances[fromMap][1].from
+    if p.mapId ~= OverWorldId then p = entrances[p.mapId][1].from end
+    return Goto(p.mapId, p.x, p.y)
+  end
+ */
+  def GotoOverworld(from: MapId): Script = {
+    val fromMap = StaticMap.readStaticMapFromRom(memory, from)
+    Goto(fromMap.entrances.head.from)
+  }
+
   val ThroneRoomOpeningGame = Consecutive(
     "Tantagel Throne Room Opening Game",
     List(
       // we should already be here...but, when i monkey around its better to have this.
       Goto(Point(TantegelThroneRoomId, 3, 4)),
-      Up.holdFor(30), // this makes sure we are looking at the king
+      Up.holdFor(10), // this makes sure we are looking at the king
       A.holdFor(10),
-      A.holdFor(250), // this talks to the king
-      WaitFor(10),
+      A.holdFor(200), // this talks to the king
+      WaitFor(5),
       A.holdFor(1),
-      WaitFor(10),
+      WaitFor(5),
       OpenChestAt(Point(TantegelThroneRoomId, 4, 4)),
       OpenChestAt(Point(TantegelThroneRoomId, 5, 4)),
-      OpenChestAt(Point(TantegelThroneRoomId, 6, 1))
+      OpenChestAt(Point(TantegelThroneRoomId, 6, 1)),
+      GotoOverworld(TantegelId)
       // leaveThroneRoomScript
     )
   )
 
   /*
-      Consecutive("Tantagel Throne Room Opening Game", {
-        -- we should already be here...but, when i monkey around its better to have this.
-        Goto(TantegelThroneRoom, 3, 4),
-        HoldUp(30), -- this makes sure we are looking at the king
-        HoldA(250), -- this talks to the king
-        OpenChestAt(TantegelThroneRoom, 4, 4),
-        OpenChestAt(TantegelThroneRoom, 5, 4),
-        OpenChestAt(TantegelThroneRoom, 6, 1),
-        leaveThroneRoomScript
-      }),
+
+  leaveTantegalOnFoot =
+    Consecutive("Leaving Throne room via legs", {GotoOverworld(Tantegel)})
+
+  leaveThroneRoomScript =
+    IfThenScript(
+      "Figure out how to leave throne room",
+      HaveSpell(Return),
+      Consecutive("Leaving Throne room via return", {saveWithKingScript, CastSpell(Return)}),
+      IfThenScript(
+        "Check to leave throne room with wings",
+        HaveItem(Wings),
+        Consecutive("Leaving Throne room via wings", {saveWithKingScript, UseItem(Wings)}),
+        leaveTantegalOnFoot
+      )
+    )
+
 
 
     function OpenDoor(loc)

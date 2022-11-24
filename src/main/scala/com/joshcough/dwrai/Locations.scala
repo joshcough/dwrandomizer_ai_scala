@@ -2,16 +2,16 @@ package com.joshcough.dwrai
 
 object Locations {
 
-  trait ImportantLocationType
+  sealed trait ImportantLocationType
 
   object ImportantLocationType {
-    object CHARLOCK    extends ImportantLocationType
-    object TANTEGEL    extends ImportantLocationType
-    object TOWN        extends ImportantLocationType
-    object CAVE        extends ImportantLocationType
-    object CHEST       extends ImportantLocationType
-    object SPIKE       extends ImportantLocationType
-    object COORDINATES extends ImportantLocationType
-    object BASEMENT    extends ImportantLocationType
+    case object CHARLOCK    extends ImportantLocationType
+    case object TANTEGEL    extends ImportantLocationType
+    case object TOWN        extends ImportantLocationType
+    case object CAVE        extends ImportantLocationType
+    case object CHEST       extends ImportantLocationType
+    case object SPIKE       extends ImportantLocationType
+    case object COORDINATES extends ImportantLocationType
+    case object BASEMENT    extends ImportantLocationType
   }
 }

@@ -357,9 +357,9 @@ object StaticMapMetadata {
 object Entrance {
   def readFromRom(memory: Memory, m: EntranceMetadata): Entrance = {
     val from = Point(
-      MapId(memory.readROM(m.warpRomAddr)),
-      memory.readROM(m.warpRomAddr + 1),
-      memory.readROM(m.warpRomAddr + 2)
+      MapId(memory.readROM(m.warpRomAddr - 16)),
+      memory.readROM(m.warpRomAddr + 1 - 16),
+      memory.readROM(m.warpRomAddr + 2 - 16)
     )
     Entrance(from, m.to, m.entranceType)
   }
@@ -426,6 +426,12 @@ object StaticMap {
 ////      val warps = getWarpsForMap(mapId, allWarps)
 ////      val immobileScps = getImmobileNPCsForMap(mapId)
 //    }
+
+  def readAllStaticMapsFromRom(memory: Memory): Map[MapId, StaticMap] =
+    StaticMapMetadata.STATIC_MAP_METADATA.view.mapValues(readStaticMapFromRom(memory, _)).toMap
+
+  def readStaticMapFromRom(memory: Memory, mapId: MapId): StaticMap =
+    readStaticMapFromRom(memory, StaticMapMetadata.STATIC_MAP_METADATA(mapId))
 
   def readStaticMapFromRom(memory: Memory, mapMetadata: StaticMapMetadata): StaticMap = {
     val tileSet =
