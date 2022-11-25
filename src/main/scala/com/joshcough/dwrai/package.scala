@@ -40,10 +40,10 @@ package object dwrai {
     val ErdricksCaveLv2Id: MapId    = MapId(29)
 
     val ALL_MAP_IDS = List(
-      CharlockId, 
-      HauksnessId, 
-      TantegelId, 
-      TantegelThroneRoomId, 
+      CharlockId,
+      HauksnessId,
+      TantegelId,
+      TantegelThroneRoomId,
       CharlockThroneRoomId,
       KolId,
       BrecconaryId,
@@ -67,7 +67,7 @@ package object dwrai {
       GarinsGraveLv3Id,
       GarinsGraveLv4Id,
       ErdricksCaveLv1Id,
-      ErdricksCaveLv2Id,
+      ErdricksCaveLv2Id
     )
   }
 

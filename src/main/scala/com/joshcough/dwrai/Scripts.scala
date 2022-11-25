@@ -3,7 +3,7 @@ package com.joshcough.dwrai
 import com.joshcough.dwrai.Button._
 import com.joshcough.dwrai.MapId.{TantegelId, TantegelThroneRoomId}
 
-case class Scripts(memory: Memory) {
+case class Scripts(maps: GameMaps) {
   sealed trait Script
 
   sealed trait Literal
@@ -52,35 +52,27 @@ case class Scripts(memory: Memory) {
 
   case class IfThen(name: String, expr: Expr, thenBranch: Script, elseBranch: Script) extends Script
 
-  def OpenMenu: Script = Consecutive("Open Menu", List(A.holdFor(30), WaitFor(nrFrames = 30)))
+  def OpenMenu: Script = Consecutive("Open Menu", List(A.holdFor(20), WaitFor(nrFrames = 20)))
 
   def OpenDoor(p: Point, dir: Direction): Script = Consecutive(
     "Open Door",
     List(
       OpenMenu,
-      Down.holdFor(5),
-      WaitFor(1),
-      Down.holdFor(5),
-      WaitFor(1),
-      Right.holdFor(5),
-      WaitFor(1),
+      Down.holdFor(1),
+      Down.holdFor(1),
+      Right.holdFor(1),
       A.holdFor(5),
-      WaitFor(1),
       A.holdFor(1),
-      WaitFor(1),
       SaveUnlockedDoor(p)
     )
   )
-
 
   def TakeStairs(from: Point, to: Point): Script = Consecutive(
     "Take Stairs",
     List(
       OpenMenu,
-      Down.holdFor(5),
-      WaitFor(1),
-      Down.holdFor(5),
-      WaitFor(1),
+      Down.holdFor(1),
+      Down.holdFor(1),
       A.holdFor(5),
       WaitFor(60)
     )
@@ -95,14 +87,10 @@ case class Scripts(memory: Memory) {
     // TODO: see if we can reduce this 90 to 60 or 75. I don't remember.
     List(
       OpenMenu,
-      Up.holdFor(5),
-      WaitFor(1),
-      Right.holdFor(5),
-      WaitFor(1),
-      A.holdFor(30),
-      WaitFor(1),
+      Up.holdFor(1),
+      Right.holdFor(1),
+      A.holdFor(20),
       A.holdFor(1),
-      WaitFor(1),
       OpenChest(point)
     )
   )
@@ -124,11 +112,9 @@ case class Scripts(memory: Memory) {
     if p.mapId ~= OverWorldId then p = entrances[p.mapId][1].from end
     return Goto(p.mapId, p.x, p.y)
   end
- */
-  def GotoOverworld(from: MapId): Script = {
-    val fromMap = StaticMap.readStaticMapFromRom(memory, from)
-    Goto(fromMap.entrances.head.from)
-  }
+   */
+  def GotoOverworld(from: MapId): Script =
+    Goto(maps.staticMaps(from).entrances.head.from)
 
   val ThroneRoomOpeningGame = Consecutive(
     "Tantagel Throne Room Opening Game",
@@ -137,7 +123,7 @@ case class Scripts(memory: Memory) {
       Goto(Point(TantegelThroneRoomId, 3, 4)),
       Up.holdFor(10), // this makes sure we are looking at the king
       A.holdFor(10),
-      A.holdFor(200), // this talks to the king
+      A.holdFor(180), // this talks to the king
       WaitFor(5),
       A.holdFor(1),
       WaitFor(5),
@@ -225,21 +211,16 @@ end)
   val GameStartMenuScript: Consecutive = Consecutive(
     "Game start menu",
     List(
-      Start.holdFor(1),
-      WaitFor(20),
-      Start.holdFor(1),
-      WaitFor(20),
+      Start.holdFor(20),
+      Start.holdFor(20),
       A.holdFor(1),
-      WaitFor(20),
-      A.holdFor(1),
-      WaitFor(20),
+      A.holdFor(20),
       Down.holdFor(1),
       Down.holdFor(1),
       Right.holdFor(1),
       Right.holdFor(1),
       Right.holdFor(1),
       A.holdFor(1),
-      WaitFor(20),
       Down.holdFor(1),
       Down.holdFor(1),
       Down.holdFor(1),
@@ -248,15 +229,13 @@ end)
       Right.holdFor(1),
       Right.holdFor(1),
       A.holdFor(30),
-      WaitFor(20),
       Up.holdFor(30),
-      WaitFor(20),
       A.holdFor(30),
-      WaitFor(20)
     ).flatMap(s => List(s, WaitFor(10)))
   )
 
   implicit class RichButton(b: Button) {
-    def holdFor(nrFrames: Int): Script = HoldButtonScript(b, nrFrames)
+    def holdFor(nrFrames: Int): Script =
+      Consecutive(s"Hold $b for $nrFrames", List(HoldButtonScript(b, nrFrames), WaitFor(1)))
   }
 }

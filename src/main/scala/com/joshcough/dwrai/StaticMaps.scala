@@ -1,9 +1,11 @@
 package com.joshcough.dwrai
 
+import cats.effect.IO
+import cats.implicits._
 import com.joshcough.dwrai.Bytes.{hiNibble, loNibble}
 import com.joshcough.dwrai.Locations.ImportantLocationType
-import ImportantLocationType._
 import com.joshcough.dwrai.MapId._
+import ImportantLocationType._
 
 object Warps {
   //    case class Warp(src: Point, dest: Point) {
@@ -355,14 +357,11 @@ object StaticMapMetadata {
 }
 
 object Entrance {
-  def readFromRom(memory: Memory, m: EntranceMetadata): Entrance = {
-    val from = Point(
-      MapId(memory.readROM(m.warpRomAddr - 16)),
-      memory.readROM(m.warpRomAddr + 1 - 16),
-      memory.readROM(m.warpRomAddr + 2 - 16)
-    )
-    Entrance(from, m.to, m.entranceType)
-  }
+  def readFromRom(memory: Memory, m: EntranceMetadata): IO[Entrance] = for {
+    mapId <- memory.readROM(m.warpRomAddr - 16)
+    x     <- memory.readROM(m.warpRomAddr + 1 - 16)
+    y     <- memory.readROM(m.warpRomAddr + 2 - 16)
+  } yield Entrance(Point(MapId(mapId), x, y), m.to, m.entranceType)
 }
 
 // NOTE: 'from' is the "overworld"
@@ -427,36 +426,41 @@ object StaticMap {
 ////      val immobileScps = getImmobileNPCsForMap(mapId)
 //    }
 
-  def readAllStaticMapsFromRom(memory: Memory): Map[MapId, StaticMap] =
-    StaticMapMetadata.STATIC_MAP_METADATA.view.mapValues(readStaticMapFromRom(memory, _)).toMap
+  def readAllStaticMapsFromRom(memory: Memory): IO[Map[MapId, StaticMap]] =
+    StaticMapMetadata.STATIC_MAP_METADATA.toList
+      .traverse { case (mapId, meta) =>
+        readStaticMapFromRom(memory, meta).map(map => (mapId, map))
+      }
+      .map(_.toMap)
 
-  def readStaticMapFromRom(memory: Memory, mapId: MapId): StaticMap =
+  def readStaticMapFromRom(memory: Memory, mapId: MapId): IO[StaticMap] =
     readStaticMapFromRom(memory, StaticMapMetadata.STATIC_MAP_METADATA(mapId))
 
-  def readStaticMapFromRom(memory: Memory, mapMetadata: StaticMapMetadata): StaticMap = {
+  def readStaticMapFromRom(memory: Memory, mapMetadata: StaticMapMetadata): IO[StaticMap] = {
     val tileSet =
       if (mapMetadata.id.value < 15) StaticMapTile.NON_DUNGEON_TILES
       else StaticMapTile.DUNGEON_TILES
 
     // returns the tile id for the given (x,y) for the current map
-    def readTileIdAt(x: Int, y: Int): StaticMapTile = {
+    def readTileIdAt(x: Int, y: Int): IO[StaticMapTile] = {
       val offset = (y * mapMetadata.size.width.value) + x
-      val addr   = Address(mapMetadata.romAddress.value - 16 + math.floor(offset / 2).toInt)
-      val value  = memory.readROM(addr)
-      val tile   = if (offset % 2 == 0) hiNibble(value) else loNibble(value)
-      tileSet(if (mapMetadata.id.value < 12) tile else tile & 7)
+      for {
+        value <- memory.readROM(
+          Address(mapMetadata.romAddress.value - 16 + math.floor(offset / 2).toInt)
+        )
+        tile = if (offset % 2 == 0) hiNibble(value) else loNibble(value)
+      } yield tileSet(if (mapMetadata.id.value < 12) tile else tile & 7)
     }
 
-    // returns a two dimensional grid of tile ids for the current map
-    val tiles: IndexedSeq[IndexedSeq[StaticMapTile]] = {
-      val h = mapMetadata.size.height.value
-      val w = mapMetadata.size.width.value
-      Range(0, h).map(y => Range(0, w).map(x => readTileIdAt(x, y)))
-    }
-
-    val entrances = mapMetadata.entrances.map(Entrance.readFromRom(memory, _))
-
-    StaticMap(mapMetadata, entrances, tiles)
+    for {
+      entrances <- mapMetadata.entrances.traverse(Entrance.readFromRom(memory, _))
+      // a two dimensional grid of tile ids for the current map
+      tiles <- {
+        val h = mapMetadata.size.height.value
+        val w = mapMetadata.size.width.value
+        Range(0, h).toList.traverse(y => Range(0, w).toList.traverse(x => readTileIdAt(x, y)))
+      }
+    } yield StaticMap(mapMetadata, entrances, tiles.toIndexedSeq.map(_.toIndexedSeq))
   }
 
 }

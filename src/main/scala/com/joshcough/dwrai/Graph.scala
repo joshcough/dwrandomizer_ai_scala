@@ -74,21 +74,19 @@ object Graph {
       }
     }))
 
-  def mkOverworldGraph(memory: Memory) = {
-    val overworld: Seq[IndexedSeq[Overworld.OverworldTile]] = Overworld.readOverworldFromROM(memory)
-    Graph(Map(Overworld.OverworldId -> overworld.zipWithIndex.map{ case (row, y) =>
-      row.zipWithIndex.map{ case (tile, x) =>
+  def mkOverworldGraph(overworld: Overworld): Graph = {
+    Graph(Map(Overworld.OverworldId -> overworld.tiles.zipWithIndex.map { case (row, y) =>
+      row.zipWithIndex.map { case (tile, x) =>
         (Point(Overworld.OverworldId, x, y), GraphNode.unknown)
       }
     }))
   }
 
   // this makes the entire graph, overworld and all static maps
-  def mkGraph(memory: Memory): Graph = {
-    val staticMapGraphs: Iterable[Graph] =
-      StaticMap.readAllStaticMapsFromRom(memory).values.map(mkStaticMapGraph)
-    val overworldGraph = mkOverworldGraph(memory)
-    (Seq(overworldGraph) ++ staticMapGraphs).foldLeft(Graph(Map())){ _ + _ }
+  def mkGraph(gameMaps: GameMaps): Graph = {
+    val staticMapGraphs: Iterable[Graph] = gameMaps.staticMaps.values.map(mkStaticMapGraph)
+    val overworldGraph                   = mkOverworldGraph(gameMaps.overworld)
+    (Seq(overworldGraph) ++ staticMapGraphs).foldLeft(Graph(Map())) { _ + _ }
   }
 }
 
@@ -128,8 +126,9 @@ case class Graph(nodes: Map[MapId, Seq[Seq[(Point, GraphNode)]]]) {
 
   def +(other: Graph): Graph = Graph(nodes ++ other.nodes)
 
-  private lazy val flatRepresentation: Map[Point, GraphNode] = nodes.toList.flatMap { case (_, arr) =>
-    arr.flatten
+  private lazy val flatRepresentation: Map[Point, GraphNode] = nodes.toList.flatMap {
+    case (_, arr) =>
+      arr.flatten
   }.toMap
 
   def quickPrint: String = flatRepresentation.toList.mkString("\n")
@@ -224,7 +223,7 @@ case class PathNode(from: Point, to: Point, dir: Direction, isDoor: Boolean)
 case class Path(src: Point, dest: Point, weight: Int, path: List[PathNode], nrKeysRequired: Int) {
   def isEmpty: Boolean = path.isEmpty
   def convertPathToCommands: List[MovementCommand] =
-    path.zip(path.drop(1).map(Option(_)) ++ List(None)).flatMap{ case (node, nextNode) =>
+    path.zip(path.drop(1).map(Option(_)) ++ List(None)).flatMap { case (node, nextNode) =>
       if (nextNode.exists(_.isDoor))
         List(OpenDoorAt(node.to, node.dir), MoveCommand(node.from, node.to, node.dir))
       else List(MoveCommand(node.from, node.to, node.dir))
