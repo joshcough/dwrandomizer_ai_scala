@@ -230,7 +230,7 @@ end)
       Right.holdFor(1),
       A.holdFor(30),
       Up.holdFor(30),
-      A.holdFor(30),
+      A.holdFor(30)
     ).flatMap(s => List(s, WaitFor(10)))
   )
 

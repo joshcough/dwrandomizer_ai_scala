@@ -1,14 +1,18 @@
 package com.joshcough.dwrai
 
-import cats.implicits._
 import cats.data.StateT
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import com.joshcough.dwrai.Button.{A, B, Down, Left, Right, Select, Start, Up}
+import cats.implicits._
 import com.joshcough.dwrai.MapId.TantegelThroneRoomId
 import nintaco.api.API
 
-import java.util.concurrent.{ArrayBlockingQueue, BlockingQueue}
+case class Game(maps: GameMaps, graph: Graph, currentLoc: Point, pressedButton: Option[Button]) {
+  def press(b: Button): Game = this.copy(pressedButton = Some(b))
+  def releaseButton: Game    = this.copy(pressedButton = None)
+}
+
+case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
 
 object Interpreter {
   def runMain(api: API): IO[Unit] = {
@@ -44,32 +48,6 @@ object Interpreter {
     } yield ()
   }
 }
-
-case class Machine(private val api: API) {
-
-  val frameQueue: BlockingQueue[Int] = new ArrayBlockingQueue[Int](10000)
-  api.addFrameListener(() => frameQueue.put(api.getFrameCount))
-
-  val memory: Memory         = Memory(api)
-  val controller: Controller = Controller(api)
-  def getFrameCount: IO[Int] = IO(api.getFrameCount)
-  def getLocation: IO[Point] = memory.getLocation
-
-  def printGamePad(): IO[Unit] = {
-    val buttons = List(A, B, Up, Down, Left, Right, Select, Start)
-    Logging.log(buttons.zip(buttons.map { b => api.readGamepad(0, b.underlying) }))
-  }
-
-  def advanceOneFrame: StateT[IO, Game, Int] = StateT.liftF(IO(frameQueue.take()))
-
-}
-
-case class Game(maps: GameMaps, graph: Graph, currentLoc: Point, pressedButton: Option[Button]) {
-  def press(b: Button): Game = this.copy(pressedButton = Some(b))
-  def releaseButton: Game    = this.copy(pressedButton = None)
-}
-
-case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
 
 case class Interpreter(machine: Machine, scripts: Scripts) {
 
@@ -230,9 +208,9 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     } yield ()
 
     for {
-      _ <- lift(Logging.log(s"waiting until $c"))
+      //_ <- lift(Logging.log(s"waiting until $c"))
       b <- evalToBool(c)
-      _ <- lift(Logging.log(s"b $b"))
+      //_ <- lift(Logging.log(s"b $b"))
       _ <- if (!b.b) run1 else unit
     } yield ()
   }
@@ -253,10 +231,16 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
 
     // read stuff from machine into the game
     loc <- lift(machine.getLocation)
-    _   <- lift(if (loc != game.currentLoc) Logging.log(s"current loc: $loc") else ().pure[IO])
-    _   <- setGame(game.copy(currentLoc = loc))
+    // TODO: .... we _could_ get the location through the listeners
+    // not sure if that would be better or not. worth exploring.
+    _ <- lift(if (loc != game.currentLoc) Logging.log(s"current loc: $loc") else ().pure[IO])
+    _ <- setGame(game.copy(currentLoc = loc))
 
     // set stuff from the game into the machine
     _ <- game.pressedButton.traverse(b => lift(machine.controller.press(b)))
+
+    _ <- lift(
+      Option(machine.eventsQueue.poll()).traverse(event => Logging.log(("== EVENT ==", event)))
+    )
   } yield ()
 }
