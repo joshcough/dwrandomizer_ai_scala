@@ -4,8 +4,11 @@ package object dwrai {
 
   case class Address(value: Int) {
     def +(i: Int) = Address(value + i)
+    def -(i: Int) = Address(value - i)
   }
+
   case class MapId(value: Int)
+
   object MapId {
     val CharlockId: MapId           = MapId(2)
     val HauksnessId: MapId          = MapId(3)
@@ -36,9 +39,52 @@ package object dwrai {
     val ErdricksCaveLv1Id: MapId    = MapId(28)
     val ErdricksCaveLv2Id: MapId    = MapId(29)
 
+    val ALL_MAP_IDS = List(
+      CharlockId,
+      HauksnessId,
+      TantegelId,
+      TantegelThroneRoomId,
+      CharlockThroneRoomId,
+      KolId,
+      BrecconaryId,
+      GarinhamId,
+      CantlinId,
+      RimuldarId,
+      TantegelBasementId,
+      NorthernShrineId,
+      SouthernShrineId,
+      CharlockCaveLv1Id,
+      CharlockCaveLv2Id,
+      CharlockCaveLv3Id,
+      CharlockCaveLv4Id,
+      CharlockCaveLv5Id,
+      CharlockCaveLv6Id,
+      SwampCaveId,
+      MountainCaveLv1Id,
+      MountainCaveLv2Id,
+      GarinsGraveLv1Id,
+      GarinsGraveLv2Id,
+      GarinsGraveLv3Id,
+      GarinsGraveLv4Id,
+      ErdricksCaveLv1Id,
+      ErdricksCaveLv2Id
+    )
   }
 
-  case class Point(mapId: MapId, x: Int, y: Int)
+  object Point {
+    implicit val pointOrdering: Ordering[Point] = (a: Point, b: Point) => a.compare(b)
+  }
+
+  case class Point(mapId: MapId, x: Int, y: Int) {
+    def <(p: Point): Boolean = compare(p) < 0
+
+    def compare(p: Point): Int =
+      (mapId.value.compare(p.mapId.value), x.compare(p.x), y.compare(p.y)) match {
+        case (0, 0, y_) => y_
+        case (0, x_, _) => x_
+        case (i, _, _)  => i
+      }
+  }
 
   object Bytes {
     // HI_NIBBLE(b) (((b) >> 4) & 0x0F)
