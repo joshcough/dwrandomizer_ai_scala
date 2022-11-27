@@ -3,8 +3,33 @@ package com.joshcough.dwrai
 import cats.effect.IO
 import cats.implicits._
 import com.joshcough.dwrai.Bytes._
+import com.joshcough.dwrai.Overworld.OverworldId
 
-case class Overworld(tiles: IndexedSeq[IndexedSeq[Overworld.Tile]])
+case class Overworld(tiles: IndexedSeq[IndexedSeq[Overworld.Tile]]) {
+
+  def getTileAt(x: Int, y: Int): Overworld.Tile = tiles(y)(x)
+
+  def getVisibleOverworldGrid(currentLoc: Point): IndexedSeq[IndexedSeq[(Point, Overworld.Tile)]] =
+    if (currentLoc.mapId == OverworldId) getVisibleOverworldGrid(currentLoc.x, currentLoc.y)
+    else
+      throw new RuntimeException(
+        "tried to get the visible overworld grid when we aren't on the overworld"
+      )
+
+  def getVisibleOverworldGrid(currentX: Int,
+                              currentY: Int
+  ): IndexedSeq[IndexedSeq[(Point, Overworld.Tile)]] = {
+    val upperLeftX   = math.max(0, currentX - 8)
+    val upperLeftY   = math.max(0, currentY - 7)
+    val bottomRightX = math.min(119, currentX + 7)
+    val bottomRightY = math.min(119, currentY + 7)
+    Range.inclusive(upperLeftY, bottomRightY).map { y =>
+      Range.inclusive(upperLeftX, bottomRightX).map { x =>
+        (Point(OverworldId, x, y), tiles(y)(x))
+      }
+    }
+  }
+}
 
 object Overworld {
 

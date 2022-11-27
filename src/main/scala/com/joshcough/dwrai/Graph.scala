@@ -1,5 +1,6 @@
 package com.joshcough.dwrai
 
+import com.joshcough.dwrai.Overworld.OverworldId
 import com.joshcough.dwrai.Warps.STATIC_WARPS
 
 object Graph {
@@ -66,7 +67,7 @@ object Graph {
   }
 
   def mkStaticMapGraph(staticMap: StaticMap): Graph =
-    Graph(Map(staticMap.mapId -> staticMap.rows.zipWithIndex.map { case (r, y) =>
+    Graph.fromFlat(Map(staticMap.mapId -> staticMap.rows.zipWithIndex.map { case (r, y) =>
       r.zipWithIndex.map { case (_, x) =>
         val point = Point(staticMap.mapId, x, y)
         val node  = GraphNode.known(neighborsAt(staticMap, x, y), staticMap.getTileAt(x, y).isDoor)
@@ -75,7 +76,7 @@ object Graph {
     }))
 
   def mkOverworldGraph(overworld: Overworld): Graph = {
-    Graph(Map(Overworld.OverworldId -> overworld.tiles.zipWithIndex.map { case (row, y) =>
+    Graph.fromFlat(Map(Overworld.OverworldId -> overworld.tiles.zipWithIndex.map { case (row, y) =>
       row.zipWithIndex.map { case (tile, x) =>
         (Point(Overworld.OverworldId, x, y), GraphNode.unknown)
       }
@@ -88,6 +89,9 @@ object Graph {
     val overworldGraph                   = mkOverworldGraph(gameMaps.overworld)
     (Seq(overworldGraph) ++ staticMapGraphs).foldLeft(Graph(Map())) { _ + _ }
   }
+
+  def fromFlat(nodes: Map[MapId, Seq[Seq[(Point, GraphNode)]]]): Graph =
+    Graph(nodes.toList.flatMap { case (_, arr) => arr.flatten }.toMap)
 }
 
 sealed trait GraphNodeType
@@ -101,6 +105,7 @@ case object Known
 // like a grass node surrounded by mountains. there would not be a path to it.
 case class GraphNode(nodeType: GraphNodeType, neighbors: Set[Neighbor], isDoor: Boolean = false) {
   def mkKnown: GraphNode = this.copy(nodeType = Known)
+  def isKnown = nodeType == Known
 }
 
 object GraphNode {
@@ -121,20 +126,14 @@ case class Neighbor(point: Point, dir: Direction) {
   def isAt(p: Point): Boolean = p == point
 }
 
-case class Graph(nodes: Map[MapId, Seq[Seq[(Point, GraphNode)]]]) {
+// TODO: make these indexedseq
+case class Graph(nodes: Map[Point, GraphNode]) {
   // def prettyPrint: String = ...
 
   def +(other: Graph): Graph = Graph(nodes ++ other.nodes)
 
-  private lazy val flatRepresentation: Map[Point, GraphNode] = nodes.toList.flatMap {
-    case (_, arr) =>
-      arr.flatten
-  }.toMap
-
-  def quickPrint: String = flatRepresentation.toList.mkString("\n")
-
-  def getNodeAtPoint(p: Point): Option[GraphNode] = flatRepresentation.get(p)
-  def isDoor(p: Point): Boolean                   = getNodeAtPoint(p).exists(_.isDoor)
+  //def getNodeAtPoint(p: Point): Option[GraphNode] = nodes.get(p)
+  def isDoor(p: Point): Boolean = nodes(p).isDoor
 
   def staticMapDijkstra(src: Point, dests: List[Point], nrKeys: Int): List[Path] =
     dijkstra(src, dests, nrKeys, _ => 1)
@@ -176,8 +175,10 @@ case class Graph(nodes: Map[MapId, Seq[Seq[(Point, GraphNode)]]]) {
       while (pq.nonEmpty) {
         val current           = pq.dequeue()
         val distanceToCurrent = getDistanceTo(current.point)
-        val neighbors: Set[Neighbor] =
-          getNodeAtPoint(current.point).map(_.neighbors).getOrElse(Set())
+        val neighbors: Set[Neighbor] = {
+          val n = nodes(current.point)
+          if (n.isKnown) n.neighbors else Set()
+        }
         neighbors.foreach { neighbor =>
           val newWeight = distanceToCurrent + weightFn(neighbor.point)
           if (newWeight < getDistanceTo(neighbor.point)) {
@@ -215,6 +216,24 @@ case class Graph(nodes: Map[MapId, Seq[Seq[(Point, GraphNode)]]]) {
       }
       .sortWith(_.weight < _.weight)
   }
+
+  def discover(ps: Seq[Point]): (Graph, Seq[Point]) = {
+    val undiscoveredNodes = ps.filter(p => ! nodes(p).isKnown)
+    val updatedGraph = Graph(nodes ++ undiscoveredNodes.map(p => (p, nodes(p).mkKnown)).toMap)
+    (updatedGraph, undiscoveredNodes)
+  }
+
+  // NOTE: if this is slow we could call it whenever discover is called and cache it
+  def knownWorldBorder: Set[(Point, GraphNode)] =
+    nodes.filter { case (p, gn) =>
+      p.mapId == OverworldId && (gn.nodeType match {
+        case Unknown => false
+        // this is saying: if you are discovered, one of your neighbors is undiscovered
+        // then YOU are on the border. you are a border tile.
+        // because you bump up against the unknown. :)
+        case Known => gn.neighbors.exists(n => nodes(n.point).nodeType == Unknown)
+      })
+    }.toSet
 }
 
 case class PathNode(from: Point, to: Point, dir: Direction, isDoor: Boolean)
