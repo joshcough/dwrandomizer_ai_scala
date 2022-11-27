@@ -47,7 +47,7 @@ object Graph {
         if (condition) List(Neighbor(staticMap.entrances.head.from, dir))
         else List()
 
-      if ((isWalkable(x, y)) && connectsToOverworld && staticMap.entrances.nonEmpty) {
+      if (isWalkable(x, y) && connectsToOverworld && staticMap.entrances.nonEmpty) {
         n(x == 0, West) ++
           n(x == staticMap.width.value - 1, East) ++
           n(y == 0, North) ++
@@ -76,9 +76,22 @@ object Graph {
     }))
 
   def mkOverworldGraph(overworld: Overworld): Graph = {
+    def neighbors(x: Int, y: Int): Set[Neighbor] = {
+      def f(inBounds: Boolean, x_ : Int, y_ : Int, dir: Direction): List[Neighbor] =
+        if(inBounds) {
+          if (overworld.getTileAt(x_, y_).walkable)
+            List(Neighbor(Point(OverworldId, x_, y_), dir))
+          else List()
+        } else List()
+      f(x > 0, x - 1, y, West) ++
+        f(x < 118, x + 1, y, East) ++
+        f(y > 0, x, y - 1, North) ++
+        f(y < 118 - 1, x, y + 1, South)
+    }.toSet
+
     Graph.fromFlat(Map(Overworld.OverworldId -> overworld.tiles.zipWithIndex.map { case (row, y) =>
       row.zipWithIndex.map { case (tile, x) =>
-        (Point(Overworld.OverworldId, x, y), GraphNode.unknown)
+        (Point(Overworld.OverworldId, x, y), GraphNode.unknown(neighbors(x, y)))
       }
     }))
   }
@@ -105,11 +118,11 @@ case object Known
 // like a grass node surrounded by mountains. there would not be a path to it.
 case class GraphNode(nodeType: GraphNodeType, neighbors: Set[Neighbor], isDoor: Boolean = false) {
   def mkKnown: GraphNode = this.copy(nodeType = Known)
-  def isKnown = nodeType == Known
+  def isKnown            = nodeType == Known
 }
 
 object GraphNode {
-  def unknown: GraphNode = GraphNode(Unknown, Set())
+  def unknown(neighbors: Set[Neighbor]): GraphNode = GraphNode(Unknown, neighbors)
   def known(neighbors: Set[Neighbor], isDoor: Boolean): GraphNode =
     GraphNode(Known, neighbors, isDoor)
 }
@@ -218,13 +231,15 @@ case class Graph(nodes: Map[Point, GraphNode]) {
   }
 
   def discover(ps: Seq[Point]): (Graph, Seq[Point]) = {
-    val undiscoveredNodes = ps.filter(p => ! nodes(p).isKnown)
-    val updatedGraph = Graph(nodes ++ undiscoveredNodes.map(p => (p, nodes(p).mkKnown)).toMap)
+    val undiscoveredNodes = ps.filter(p => !nodes(p).isKnown)
+    val updatedGraph      = Graph(nodes ++ undiscoveredNodes.map(p => (p, nodes(p).mkKnown)).toMap)
     (updatedGraph, undiscoveredNodes)
   }
 
   // NOTE: if this is slow we could call it whenever discover is called and cache it
-  def knownWorldBorder: Set[(Point, GraphNode)] =
+  def knownWorldBorder: Set[(Point, GraphNode)] = {
+    // Logging.logUnsafe("OVERWORLD NODES!")
+    nodes.toList.filter { case (p, _) => p.mapId == OverworldId }.foreach(Logging.logUnsafe)
     nodes.filter { case (p, gn) =>
       p.mapId == OverworldId && (gn.nodeType match {
         case Unknown => false
@@ -234,6 +249,7 @@ case class Graph(nodes: Map[Point, GraphNode]) {
         case Known => gn.neighbors.exists(n => nodes(n.point).nodeType == Unknown)
       })
     }.toSet
+  }
 }
 
 case class PathNode(from: Point, to: Point, dir: Direction, isDoor: Boolean)

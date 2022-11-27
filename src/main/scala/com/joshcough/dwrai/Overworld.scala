@@ -35,36 +35,42 @@ object Overworld {
 
   val OverworldId: MapId = MapId(1)
 
-  sealed trait Tile
-  object Grass    extends Tile { override def toString: String = "Grass"    } // 0
-  object Desert   extends Tile { override def toString: String = "Desert"   } // 1
-  object Hills    extends Tile { override def toString: String = "Hills"    } // 2
-  object Mountain extends Tile { override def toString: String = "Mountain" } // 3
-  object Water    extends Tile { override def toString: String = "Water"    } // 4
-  object Stone    extends Tile { override def toString: String = "Stone"    } // 5
-  object Forest   extends Tile { override def toString: String = "Forest"   } // 6
-  object Swamp    extends Tile { override def toString: String = "Swamp"    } // 7
-  object Town     extends Tile { override def toString: String = "Town"     } // 8
-  object Cave     extends Tile { override def toString: String = "Cave"     } // 9
-  object Castle   extends Tile { override def toString: String = "Castle"   } // 10
-  object Bridge   extends Tile { override def toString: String = "Bridge"   } // 11
-  object Stairs   extends Tile { override def toString: String = "Stairs"   } // 12
+  sealed trait Tile { def walkable: Boolean = true }
+  object Grass  extends Tile { override def toString: String = "Grass"  }
+  object Desert extends Tile { override def toString: String = "Desert" }
+  object Hills  extends Tile { override def toString: String = "Hills"  }
+  object Mountain extends Tile {
+    override def toString: String  = "Mountain"
+    override def walkable: Boolean = false
+  }
+  object Water extends Tile {
+    override def toString: String  = "Water"
+    override def walkable: Boolean = false
+  }
+  object Stone  extends Tile { override def toString: String = "Stone"  }
+  object Forest extends Tile { override def toString: String = "Forest" }
+  object Swamp  extends Tile { override def toString: String = "Swamp"  }
+  object Town   extends Tile { override def toString: String = "Town"   }
+  object Cave   extends Tile { override def toString: String = "Cave"   }
+  object Castle extends Tile { override def toString: String = "Castle" }
+  object Bridge extends Tile { override def toString: String = "Bridge" }
+  object Stairs extends Tile { override def toString: String = "Stairs" }
 
   val OVERWORLD_TILES: IndexedSeq[Tile] =
     IndexedSeq(
-      Grass,
-      Desert,
-      Hills,
-      Mountain,
-      Water,
-      Stone,
-      Forest,
-      Swamp,
-      Town,
-      Cave,
-      Castle,
-      Bridge,
-      Stairs
+      Grass,    // 0
+      Desert,   // 1
+      Hills,    // 2
+      Mountain, // 3
+      Water,    // 4
+      Stone,    // 5
+      Forest,   // 6
+      Swamp,    // 7
+      Town,     // 8
+      Cave,     // 9
+      Castle,   // 10
+      Bridge,   // 11
+      Stairs    // 12
     )
 
   // This implementation that reads from NES memory basically.
@@ -97,7 +103,9 @@ object Overworld {
           rest <- loop(totalCount + count, currentAddr + 1)
         } yield tiles ++ rest
         else List().pure[IO]
-      loop(0, overworldPointer)
+      for {
+        res <- loop(0, overworldPointer)
+      } yield res.take(120)
     }
 
     for {
