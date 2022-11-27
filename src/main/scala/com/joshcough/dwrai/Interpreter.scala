@@ -5,6 +5,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.implicits._
 import com.joshcough.dwrai.MapId.TantegelThroneRoomId
+import com.joshcough.dwrai.Overworld.OverworldId
 import nintaco.api.API
 
 case class Game(maps: GameMaps, graph: Graph, currentLoc: Point, pressedButton: Option[Button]) {
@@ -226,6 +227,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
 
   def getGame: StateT[IO, Game, Game]             = StateT.get
   def setGame(game: Game): StateT[IO, Game, Unit] = StateT.set(game)
+
   def syncGameState: StateT[IO, Game, Unit] = for {
     game <- getGame
 
@@ -234,7 +236,11 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     // TODO: .... we _could_ get the location through the listeners
     // not sure if that would be better or not. worth exploring.
     _ <- lift(if (loc != game.currentLoc) Logging.log(s"current loc: $loc") else ().pure[IO])
-    _ <- setGame(game.copy(currentLoc = loc))
+
+    (updatedGraph, newlyDiscoveredPoints) = discoverOverworldNodes(game)
+    _ <- lift(newlyDiscoveredPoints.traverse(p => Logging.log(("discovered", p, game.maps.overworld.getTileAt(p.x, p.y)))))
+
+    _ <- setGame(game.copy(currentLoc = loc, graph = updatedGraph))
 
     // set stuff from the game into the machine
     _ <- game.pressedButton.traverse(b => lift(machine.controller.press(b)))
@@ -243,4 +249,18 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
       Option(machine.eventsQueue.poll()).traverse(event => Logging.log(("== EVENT ==", event)))
     )
   } yield ()
+
+  def discoverOverworldNodes(game: Game): (Graph, Seq[Point]) =
+    if (game.currentLoc.mapId == OverworldId) {
+      val grid: Seq[IndexedSeq[(Point, Overworld.Tile)]] = game.maps.overworld.getVisibleOverworldGrid(game.currentLoc)
+      game.graph.discover(grid.flatten.map(_._1))
+    } else (game.graph, Seq())
+
+  //_ <- if (game.currentLoc.mapId == OverworldId) lift(printVisibleOverworldGrid(game)) else pure(())
+  def printVisibleOverworldGrid(game: Game): IO[Unit] = {
+    Logging.log("-----Grid-----") *>
+      game.maps.overworld.getVisibleOverworldGrid(game.currentLoc).toList.traverse_ { row =>
+        Logging.log(row.map(_._2).mkString(","))
+      }
+  }
 }

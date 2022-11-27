@@ -368,18 +368,12 @@ object Entrance {
 // (""s because the entrance could be to a basement and so from might actually be tantegel or garinham)
 case class Entrance(from: Point, to: Point, entranceType: ImportantLocationType)
 
-// TODO: i think i want to get rid of the notion of walkable with keys.
+// NOTE: we have gotten rid of the notion of walkable with keys.
 // instead, just add the neighbors for a door tile to the graph always
 // (and the warps too actually)
-// and when calculating the shortest path, just like...
-// dont follow paths if you dont have keys.
-// (or dont follow a path if you haven't actually discovered it yet)
-case class StaticMapTile(tileId: Int,
-                         name: String,
-                         walkable: Boolean,
-                         walkableWithKeys_ : Option[Boolean] = None
-) {
-  val walkableWithKeys: Boolean = walkableWithKeys_.getOrElse(walkable)
+// TODO: but when calculating the shortest path, we have to filter out paths
+// that we don't have enough keys for.
+case class StaticMapTile(tileId: Int, name: String, walkable: Boolean) {
   // i think 1 here is ok. if its not walkable it wont end up in the graph at all
   // the only small problem is charlock has some swamp and desert, but... they aren't really
   // avoidable anyway, and so... it should just be fine to always use 1.
@@ -401,7 +395,7 @@ object StaticMapTile {
     StaticMapTile(8, "Trees", walkable = true),
     StaticMapTile(9, "Swamp", walkable = true),
     StaticMapTile(10, "Field", walkable = true),
-    StaticMapTile(11, "Door", walkable = false, Some(true)), // walkableWithKeys
+    StaticMapTile(11, "Door", walkable = true),
     StaticMapTile(12, "Weapon", walkable = false),
     StaticMapTile(13, "Inn", walkable = false),
     StaticMapTile(14, "Bridge", walkable = true),
@@ -414,7 +408,7 @@ object StaticMapTile {
     StaticMapTile(2, "Brick", walkable = true),
     StaticMapTile(3, "Down", walkable = true),
     StaticMapTile(4, "Chest", walkable = true),
-    StaticMapTile(5, "Door", walkable = false, Some(true)), // walkableWithKeys
+    StaticMapTile(5, "Door", walkable = true),
     // in swamp cave, we get id six where the princess is. its the only 6 we get in any dungeon.
     StaticMapTile(6, "Brick", walkable = true)
   )
@@ -495,52 +489,6 @@ TantegelBasementStairs = Point(Tantegel, 29, 29)
 SwampNorthEntrance     = Point(SwampCave, 0, 0)
 SwampSouthEntrance     = Point(SwampCave, 0, 29)
 
-function getWarpsForMap(mapId, allWarps)
-  local res = {}
-  local warpsForMapId = list.filter(allWarps, function(w)
-    return w.src.mapId == mapId
-  end)
-  for _,w in ipairs(warpsForMapId) do
-    if res[w.src.x] == nil then res[w.src.x] = {} end
-    if res[w.src.x][w.src.y] == nil then res[w.src.x][w.src.y] = {} end
-    table.insert(res[w.src.x][w.src.y], w.dest)
-  end
-  return res
-end
-
-
-function StaticMapMetadata:readEntranceCoordinates(memory)
-  if self.entrances == nil then return nil end
-  local res = list.map(self.entrances, function(e) return e:convertToEntrance(memory) end)
-  return res
-end
-
-function getAllEntranceCoordinates(memory)
-  local res = {}
-  for i, meta in pairs(STATIC_MAP_METADATA) do
-    res[i] = meta:readEntranceCoordinates(memory)
-  end
-  return res
-end
-
-mockEntranceCoordinates = {
-   [2]= {Entrance(Point( 2, 19, 10), Point(1, 54,  87), CHARLOCK)},
-   [3]= {Entrance(Point( 3, 10,  0), Point(1, 29, 112), Town)},
-   [4]= {Entrance(Point( 4, 29, 11), Point(1, 85,  90), TANTEGEL)},
-   [7]= {Entrance(Point( 7, 23, 19), Point(1, 55,  67), Town)},
-   [8]= {Entrance(Point( 8, 15,  0), Point(1, 98,  98), Town)},
-   [9]= {Entrance(Point( 9, 14,  0), Point(1, 74, 108), Town)},
-   [10]={Entrance(Point(10, 15,  5), Point(1, 36,  44), Town)},
-   [11]={Entrance(Point(11, 14, 29), Point(1, 74, 110), Town)},
-   [12]={Entrance(Point(12,  4,  0), Point(4, 29,  29), CAVE)},
-   [13]={Entrance(Point(13,  9,  4), Point(1, 58, 106), CAVE)},
-   [14]={Entrance(Point(14,  4,  0), Point(1, 82,   8), CAVE)},
-   [21]={Entrance(Point(21,  0,  0), Point(1, 90,  78), CAVE), Entrance(Point(21, 29, 0), Point(1, 93, 63), CAVE)},
-   [22]={Entrance(Point(22,  7,  0), Point(1, 96,  99), CAVE)},
-   [24]={Entrance(Point(24, 11,  6), Point(9, 19,   0), CAVE)},
-   [28]={Entrance(Point(28,  0,  0), Point(1, 86,  84), CAVE)}
-  }
-
 function StaticMap:resetWarps (allWarps)
   self.warps = getWarpsForMap(self.mapId, allWarps)
 end
@@ -558,85 +506,6 @@ function StaticMap:markSeenByPlayer(allStaticMaps)
   end
 end
 
-PRINT_TILE_NAME    = 1
-PRINT_TILE_NO_KEYS = 2
-PRINT_TILE_KEYS    = 3
-
-function StaticMap:__tostring (printStrat)
-  function printTile(t)
-    if printStrat == PRINT_TILE_NAME or printStrat == nil then return t.name
-    elseif printStrat == PRINT_TILE_NO_KEYS then return t.walkable and "O" or " "
-    else return (t.walkableWithKeys or t.walkable) and "O" or " "
-    end
-  end
-
-  local tileSet = self:getTileSet()
-  local res = ""
-  for y = 0,self.height-1 do
-    local row = ""
-    for x = 0,self.width-1 do
-      local t = tileSet[self.rows[y][x]]
-      row = row .. " | " .. (printTile(t))
-    end
-    res = res .. row .. " |\n"
-  end
-  return self.mapName .. "\n" .. res
-end
-
-function StaticMap:writeTileNamesToFile (file)
-  file:write(self:__tostring() .. "\n")
-end
-
-MAP_DIRECTORY = "/Users/joshcough/work/dwrandomizer_ai/maps/"
-STATIC_MAPS_FILE = MAP_DIRECTORY .. "static_maps.txt"
-
-function StaticMap:saveIdsToFile ()
-  local mapFileName = MAP_DIRECTORY .. self.mapName
-  table.save(self.rows, mapFileName)
-end
-
-function StaticMap:saveGraphToFile ()
-  local graphNoKeysFileName = MAP_DIRECTORY .. self.mapName .. ".graph"
-  local graphWithKeysFileName = MAP_DIRECTORY .. self.mapName .. ".with_keys.graph"
-  table.save(self:mkGraph(false), graphNoKeysFileName)
-  table.save(self:mkGraph(true), graphWithKeysFileName)
-end
-
--- TODO: i dont really think the next two functions work anymore.
-function quickPrintGraph(mapId, allWarps)
-  log.debug(loadStaticMapFromFile(mapId, allWarps):mkGraph(false))
-  log.debug(loadStaticMapFromFile(mapId, allWarps):mkGraph(true))
-end
-
-function loadStaticMapFromFile (mapId, allWarps)
-  if mapId < 2 then return nil end
-  local mapData = STATIC_MAP_METADATA[mapId]
-  local mapName = mapData.name
-  local mapFileName = MAP_DIRECTORY .. mapName
-  -- TODO: these overworld coordinates are wrong. we definitely have a problem
-  -- reading from files now.
-  return StaticMap(mapId, mapName, mapData.mapType, mapData.overworldCoordinates,
-                   mapData.size.width, mapData.size.height, table.load(mapFileName), allWarps)
-end
-
-function readAllStaticMaps(memory, allWarps)
-  local res = {}
-  for i = 2, 29 do
-    res[i] = readStaticMapFromRom(memory, i, allWarps)
-  end
-  return res
-end
-
-function saveStaticMaps(memory, allWarps)
-  local file = io.open(STATIC_MAPS_FILE, "w")
-  local maps = readAllStaticMaps(memory, allWarps)
-  for i = 2, 29 do
-    maps[i]:writeTileNamesToFile(file)
-    maps[i]:saveIdsToFile()
-    maps[i]:saveGraphToFile()
-  end
-  file:close()
-end
  */
 
 //  function StaticMap:childrenIds()
