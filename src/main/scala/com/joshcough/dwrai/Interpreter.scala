@@ -8,9 +8,18 @@ import com.joshcough.dwrai.MapId.TantegelThroneRoomId
 import com.joshcough.dwrai.Overworld.OverworldId
 import nintaco.api.API
 
-case class Game(maps: GameMaps, graph: Graph, currentLoc: Point, pressedButton: Option[Button]) {
+import scala.util.Random
+
+case class Game(maps: GameMaps,
+                graph: Graph,
+                currentLoc: Point,
+                pressedButton: Option[Button],
+                destination: Option[Point] = None
+) {
   def press(b: Button): Game = this.copy(pressedButton = Some(b))
   def releaseButton: Game    = this.copy(pressedButton = None)
+
+  def onOverworld = currentLoc.mapId == OverworldId
 }
 
 case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
@@ -40,9 +49,12 @@ object Interpreter {
           def run(): Unit =
             (for {
               loc <- machine.getLocation
-              game = Game(gameMaps, Graph.mkGraph(gameMaps), loc, pressedButton = None)
-              _ <- interpreter.interpret(script).run(game)
-              _ <- Logging.log(s"all done interpreting")
+              game <- interpreter
+                .interpret(script)
+                .runS(Game(gameMaps, Graph.mkGraph(gameMaps), loc, pressedButton = None))
+              _ <- Logging.log(s"all done interpreting initial script")
+              _ <- game.destination.traverse(d => interpreter.interpret(Goto(d)).runS(game))
+              _ <- Logging.log(s"all done interpreting goto")
             } yield ()).unsafeRunSync()
         }).start()
       }
@@ -82,7 +94,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
       case Move(from, to, dir) =>
         interpret(
           HoldButtonUntilScript(Button.fromDir(dir), Eq(GetPosition, Value(PositionLit(to))))
-        )
+        ).void
       case Goto(to: Point) =>
         for {
           currentLoc <- getGame.map(_.currentLoc)
@@ -237,26 +249,54 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     // not sure if that would be better or not. worth exploring.
     _ <- lift(if (loc != game.currentLoc) Logging.log(s"current loc: $loc") else ().pure[IO])
 
-    (updatedGraph, newlyDiscoveredPoints) = discoverOverworldNodes(game)
-    _ <- lift(newlyDiscoveredPoints.traverse(p => Logging.log(("discovered", p, game.maps.overworld.getTileAt(p.x, p.y)))))
+    updatedGraph <- lift(discoverOverworldNodesM(game))
 
-    _ <- setGame(game.copy(currentLoc = loc, graph = updatedGraph))
+    gameWithUpdatedGraph = game.copy(graph = updatedGraph)
+
+    // TODO: does this really count as syncing the game state? it is doing a lot of logic
+    // and this syncing function is getting huge... but how to do better?
+    // seems like it should come in a phase after this. like, sync, and then act.
+    // if we are on the overworld and we dont have a destination, choose one
+    destination <- lift(pickDestination(gameWithUpdatedGraph))
+
+    updatedGame = gameWithUpdatedGraph.copy(currentLoc = loc, destination = destination)
+
+    _ <- setGame(updatedGame)
 
     // set stuff from the game into the machine
-    _ <- game.pressedButton.traverse(b => lift(machine.controller.press(b)))
+    _ <- updatedGame.pressedButton.traverse(b => lift(machine.controller.press(b)))
 
-    _ <- lift(
-      Option(machine.eventsQueue.poll()).traverse(event => Logging.log(("== EVENT ==", event)))
-    )
+    // get any events from the machine (TODO: and then act on them...)
+    _ <- lift(machine.pollEvent.traverse(event => Logging.log(("== EVENT ==", event))))
   } yield ()
 
+  def pickDestination(game: Game): IO[Option[Point]] =
+    if (game.onOverworld && game.destination.isEmpty) {
+      val borderTiles: List[Point] = game.graph.knownWorldBorder.toList.map(_._1)
+      for {
+        _ <- Logging.log(("borderTiles", borderTiles))
+        newDest = borderTiles(new Random().nextInt(borderTiles.size))
+        _ <- Logging.log(("New Destination", newDest))
+      } yield Some(newDest)
+    } else game.destination.pure[IO]
+
+  def discoverOverworldNodesM(game: Game): IO[Graph] = {
+    val (updatedGraph, newlyDiscoveredPoints) = discoverOverworldNodes(game)
+    for {
+      _ <- newlyDiscoveredPoints.traverse(p =>
+        Logging.log(("discovered", p, game.maps.overworld.getTileAt(p.x, p.y)))
+      )
+    } yield updatedGraph
+  }
+
   def discoverOverworldNodes(game: Game): (Graph, Seq[Point]) =
-    if (game.currentLoc.mapId == OverworldId) {
-      val grid: Seq[IndexedSeq[(Point, Overworld.Tile)]] = game.maps.overworld.getVisibleOverworldGrid(game.currentLoc)
+    if (game.onOverworld) {
+      val grid: Seq[IndexedSeq[(Point, Overworld.Tile)]] =
+        game.maps.overworld.getVisibleOverworldGrid(game.currentLoc)
       game.graph.discover(grid.flatten.map(_._1))
     } else (game.graph, Seq())
 
-  //_ <- if (game.currentLoc.mapId == OverworldId) lift(printVisibleOverworldGrid(game)) else pure(())
+  //_ <- if (game.onOverworld) lift(printVisibleOverworldGrid(game)) else pure(())
   def printVisibleOverworldGrid(game: Game): IO[Unit] = {
     Logging.log("-----Grid-----") *>
       game.maps.overworld.getVisibleOverworldGrid(game.currentLoc).toList.traverse_ { row =>

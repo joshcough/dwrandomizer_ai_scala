@@ -8,14 +8,6 @@ import com.joshcough.dwrai.MapId._
 import ImportantLocationType._
 
 object Warps {
-  //    case class Warp(src: Point, dest: Point) {
-  //      def swap: Warp = Warp(dest, src)
-  //      override def equals(o: Any): Boolean = o match {
-  //        case w: Warp =>
-  //          (src.equals(w.src) && dest.equals(w.dest)) || src.equals(w.dest) && dest.equals(w.src)
-  //        case _ => false
-  //      }
-  //    }
 
   val STATIC_WARPS: Map[Point, Point] = List(
     Point(CharlockId, 10, 1)          -> Point(CharlockCaveLv1Id, 9, 0),
@@ -377,8 +369,8 @@ case class StaticMapTile(tileId: Int, name: String, walkable: Boolean) {
   // i think 1 here is ok. if its not walkable it wont end up in the graph at all
   // the only small problem is charlock has some swamp and desert, but... they aren't really
   // avoidable anyway, and so... it should just be fine to always use 1.
-  val weight = 1
-  def isDoor = tileId == 11
+  val weight: Int     = 1
+  def isDoor: Boolean = tileId == 11
 }
 
 object StaticMapTile {
