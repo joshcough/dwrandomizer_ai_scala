@@ -3,17 +3,7 @@ package com.joshcough.dwrai
 sealed trait Event
 
 object Event {
-  case object BattleStarted extends Event {
-    /*
-       if (self:getMapId() > 0) then
-          local enemyId = self:getEnemyId()
-          local enemy = Enemies[enemyId]
-          log.debug ("entering battle vs a " .. enemy.name)
-          self.inBattle = true
-          self.enemy = enemy
-        end
-     */
-  }
+  case class BattleStarted(enemy: Enemy) extends Event
 
   case object EnemyRun extends Event {
     // log.debug("the enemy is running!")
