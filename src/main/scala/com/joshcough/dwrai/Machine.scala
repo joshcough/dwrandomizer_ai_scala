@@ -19,6 +19,8 @@ case class Machine(private val api: API) {
 
   val eventsQueue: BlockingQueue[Event] = new ArrayBlockingQueue[Event](10000)
 
+  def cheat: IO[Unit] = memory.writeRAM(Address(0xbe), 255.toByte)
+
   def addWriteListener(address: Address)(f: Int => Event): Unit =
     api.addAccessPointListener(
       (accessPointType: Int, address: Int, newValue: Int) => {
@@ -30,19 +32,23 @@ case class Machine(private val api: API) {
 
   def addExecuteListener(address: Address)(f: Int => Event): Unit =
     api.addAccessPointListener(
-      (_accessPointType: Int, _address: Int, newValue: Int) => { eventsQueue.put(f(newValue)); newValue },
+      (_accessPointType: Int, _address: Int, newValue: Int) => {
+        eventsQueue.put(f(newValue)); newValue
+      },
       AccessPointType.PostExecute,
       address.value
     )
 
-  def addExecuteListenerM(address: Address)(f: Int => IO[Event]): Unit =
+  def addExecuteListenerM(address: Address, apt: Int = AccessPointType.PostExecute)(
+      f: Int => IO[Event]
+  ): Unit =
     api.addAccessPointListener(
       (_accessPointType: Int, _address: Int, newValue: Int) => {
         // TODO: we probably have to figure out a better way to do this than just unsafeRunSync
         eventsQueue.put(f(newValue).unsafeRunSync())
         newValue
       },
-      AccessPointType.PostExecute,
+      apt,
       address.value
     )
 
@@ -50,7 +56,9 @@ case class Machine(private val api: API) {
   addWriteListener(Address(0xd8))(WindowXCursor)
   addWriteListener(Address(0xd9))(WindowYCursor)
 
-  addExecuteListenerM(Address(0xe4df))(_ => getEnemyId.map(enemyId => BattleStarted(Enemy.enemiesMap(enemyId))))
+  addExecuteListenerM(Address(0xe4df))(_ =>
+    getEnemyId.map(enemyId => BattleStarted(Enemy.enemiesMap(enemyId)))
+  )
 
   addExecuteListener(Address(0xefc8))(_ => EnemyRun)
   addExecuteListener(Address(0xe8a4))(_ => PlayerRunSuccess)
@@ -58,6 +66,7 @@ case class Machine(private val api: API) {
   addExecuteListener(Address(0xca83))(_ => EndRepelTimer)
   // LEA90:  LDA #MSC_LEVEL_UP ;Level up music.
   addExecuteListener(Address(0xea90))(_ => LevelUp)
+  addExecuteListener(Address(0xeb18))(_ => DoneLevelingUp)
   // LCDE6:  LDA #$00 ;Player is dead. set HP to 0.
   addExecuteListener(Address(0xcdf8))(_ => DeathBySwamp)
   addExecuteListener(Address(0xe98f))(_ => EnemyDefeated)
@@ -65,6 +74,9 @@ case class Machine(private val api: API) {
   addExecuteListener(Address(0xed9c))(_ => PlayerDefeated)
   addExecuteListener(Address(0xcf5a))(_ => OpenCmdWindow)
   addExecuteListener(Address(0xcf6a))(_ => CloseCmdWindow)
+  addExecuteListener(Address(0xee90))(_ => FightEnded)
+  addExecuteListener(Address(0xc6f0))(_ => WindowOpened)
+  addExecuteListener(Address(0xa7a2))(_ => WindowRemoved)
 
   def getFrameCount: IO[Int] = IO(api.getFrameCount)
   def getLocation: IO[Point] = memory.getLocation
@@ -78,7 +90,8 @@ case class Machine(private val api: API) {
 
   def pollEvent: Option[Event] = Option(eventsQueue.poll())
 
-  def getPlayerData: IO[PlayerData] = memory.getPlayerData
-  def getLevels: IO[Seq[Level]]     = memory.getLevels
-  def getEnemyId: IO[EnemyId]       = memory.getEnemyId
+  def getPlayerData: IO[PlayerData]          = memory.getPlayerData
+  def getLevels: IO[Seq[Level]]              = memory.getLevels
+  def getEnemyId: IO[EnemyId]                = memory.getEnemyId
+  def setEnemyId(enemyId: EnemyId): IO[Unit] = memory.setEnemyId(enemyId.value)
 }

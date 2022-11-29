@@ -672,25 +672,27 @@ case class Enemy(id: EnemyId,
                  evasion: Evasion
                  // this has to be a Map[EnemyId, List[Point]] stored in the Game
                  // locations: List[Point]
-) {}
+) {
+
+  def oneRoundDamageRange(playerData: PlayerData): (Int, Int) = {
+    val z = math.max(0, playerData.stats.attackPower.value - (agility.value / 2))
+    (math.floor(z / 4).toInt, math.floor(z / 2).toInt)
+  }
+
+  // true if the enemy can be defeated (on average) in 3 turns or less.
+  // TODO: but why 3...?
+  // shouldn't we factor in the str of the enemy and the players hp/armor/etc?
+  def canBeDefeatedByPlayer(playerData: PlayerData): Boolean = {
+    val (oneRoundMin, _) = oneRoundDamageRange(playerData)
+    val avgDamage        = oneRoundMin * 1.5
+    // TODO: why a 3 here? that means 3 turns right? why?
+    // i dont think there is a good reason. this all needs revisiting.
+    (minHP.value + maxHP.value) / 2 < avgDamage * 3
+  }
+
+}
 
 /*
-function Enemy:oneRoundDamageRange(playerData)
-  local atkPwr = playerData.stats.attackPower
-  local enemyAgility = self.agility
-  local agiDiv2 = enemyAgility / 2
-  local z = math.max(0, atkPwr - agiDiv2)
-  return {math.floor(z / 4), math.floor(z / 2)}
-end
-
--- true if the enemy can be defeated (on average) in 3 turns or less.
-function Enemy:canBeDefeatedByPlayer(playerData)
-  local oneRoundDamageRange = self:oneRoundDamageRange(playerData)
-  local minDamage = oneRoundDamageRange[1]
-  local avgDamage = minDamage * 1.5
-  return (self.hpMin + self.hpMax) / 2 < avgDamage * 3
-end
-
 
 Grind = class(function(a, location, enemy)
   a.location = location

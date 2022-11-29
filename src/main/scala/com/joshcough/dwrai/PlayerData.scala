@@ -5,13 +5,12 @@ import com.joshcough.dwrai.Items.{Armor, ItemInventory, Shield, Weapon}
 case class Equipment(weapon: Weapon, armor: Armor, shield: Shield)
 
 // TODO: the levels should probably be in the Game, and just the current level should be here, right?
-case class PlayerData(location: Point,
-                      stats: Stats,
+case class PlayerData(stats: Stats,
                       equipment: Equipment,
                       spells: Set[Spell],
                       items: ItemInventory,
                       statuses: Set[Status]
-) {
+)(val location: Point) {
   /*
   def xpToNextLevel = self.levels[self.stats.level + 1] - self.stats.xp
   def totalXpToNextLevel(startLevel) = self.levels[startLevel + 1] - self.levels[startLevel]
