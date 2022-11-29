@@ -63,4 +63,8 @@ case class Machine(private val api: API) {
   def advanceOneFrame: StateT[IO, Game, Int] = StateT.liftF(IO(frameQueue.take()))
 
   def pollEvent: Option[Event] = Option(eventsQueue.poll())
+
+  def getPlayerData: IO[PlayerData] = memory.getPlayerData
+  def getLevels: IO[Seq[Level]]     = memory.getLevels
+  def getEnemyId: IO[EnemyId]       = memory.getEnemyId
 }

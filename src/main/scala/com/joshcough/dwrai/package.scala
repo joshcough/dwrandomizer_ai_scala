@@ -2,9 +2,24 @@ package com.joshcough
 
 package object dwrai {
 
+  case class CurrentHP(value: Int)
+  case class MaxHP(value: Int)
+  case class CurrentMP(value: Int)
+  case class MaxMP(value: Int)
+  case class Xp(value: Int)
+  case class Gold(value: Int)
+  case class LevelId(id: Int)
+  case class Level(id: LevelId, xp: Xp)
+  case class Strength(value: Int)
+  case class Agility(value: Int)
+  case class AttackPower(value: Int)
+  case class DefensePower(value: Int)
+
   case class Address(value: Int) {
-    def +(i: Int) = Address(value + i)
-    def -(i: Int) = Address(value - i)
+    def +(i: Int): Address      = Address(value + i)
+    def -(i: Int): Address      = Address(value - i)
+    def <(a: Address): Boolean  = value < a.value
+    def <=(a: Address): Boolean = value <= a.value
   }
 
   case class MapId(value: Int)
@@ -88,7 +103,7 @@ package object dwrai {
 
   object Bytes {
     // HI_NIBBLE(b) (((b) >> 4) & 0x0F)
-    def hiNibble(b: Int): Int = math.floor(b / 16).toInt & 0x0f
+    def hiNibble(b: Int): Int = b >> 4 & 0x0f
     // LO_NIBBLE(b) (((b) & 0x0F)
     def loNibble(b: Int): Int = b & 0x0f
   }

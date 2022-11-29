@@ -67,7 +67,7 @@ object Items {
 
   object ItemInventory {
     def fromSlots(nrHerbs: Int, nrKeys: Int, slots: List[Int]): ItemInventory =
-      ItemInventory(nrHerbs, nrKeys, slots.map(itemsByByte(_)))
+      ItemInventory(nrHerbs, nrKeys, slots.map(z => itemsByByte(z - 1)))
 
     /*
   function Items:__tostring()
