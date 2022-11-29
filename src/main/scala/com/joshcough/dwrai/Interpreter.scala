@@ -1,10 +1,9 @@
 package com.joshcough.dwrai
 
-import cats.data.{IndexedStateT, StateT}
+import cats.data.StateT
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.implicits._
-import com.joshcough.dwrai.Bytes.{hiNibble, loNibble}
 import com.joshcough.dwrai.Event.BattleStarted
 import com.joshcough.dwrai.MapId.TantegelThroneRoomId
 import com.joshcough.dwrai.Overworld.OverworldId
@@ -18,7 +17,7 @@ case class Game(maps: GameMaps,
                 levels: Seq[Level],
                 pressedButton: Option[Button],
                 destination: Option[Point] = None,
-                inBattle: Boolean = false
+                inBattle: Option[Enemy] = None
 ) {
   def currentLoc: Point      = playerData.location
   def press(b: Button): Game = this.copy(pressedButton = Some(b))
@@ -93,7 +92,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
 
       case DoNothing               => pure(())
       case Consecutive(_, scripts) => scripts.traverse_(interpret)
-      case DebugScript(msg)        => lift(Logging.log(s"DEBUG: $msg"))
+      case DebugScript(msg)        => log(s"DEBUG: $msg")
       case IfThen(name, expr, thenB, elseB) =>
         evalToBool(expr).flatMap(br => interpret(if (br.b) thenB else elseB))
 
@@ -110,7 +109,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
         } yield res
     }
 
-    lift(Logging.log(s"interpreting: $s")) *> run *> syncGameState
+    log(s"interpreting: $s") *> run *> syncGameState
   }
 
   // TODO: we have to figure out a way to return an updated graph here
@@ -130,13 +129,13 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
   }
 
   def debugPath(path: Path, commands: Seq[MovementCommand], scripts: Seq[Script]): IO[Unit] = for {
-    _ <- Logging.log("PATH ----")
-    _ <- path.path.traverse(Logging.log)
-    _ <- Logging.log("COMMANDS ----")
-    _ <- commands.traverse(Logging.log)
-    _ <- Logging.log("SCRIPTS ----")
-    _ <- scripts.traverse(Logging.log)
-    _ <- Logging.log("-------")
+    _ <- logIO("PATH ----")
+    _ <- path.path.traverse(logIO)
+    _ <- logIO("COMMANDS ----")
+    _ <- commands.traverse(logIO)
+    _ <- logIO("SCRIPTS ----")
+    _ <- scripts.traverse(logIO)
+    _ <- logIO("-------")
   } yield ()
 
   sealed trait ConditionResult
@@ -210,29 +209,29 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
   } yield res
 
   private def waitUntilFrame(frameToWaitUntil: Int): StateT[IO, Game, Unit] = for {
-    // Logging.log(s"Waiting until $frameToWaitUntil, api.getFrameCount is: ${api.getFrameCount}")
+    // logIO(s"Waiting until $frameToWaitUntil, api.getFrameCount is: ${api.getFrameCount}")
     _ <- syncGameState
     // printGamePad()
     currentFrame <- machine.advanceOneFrame
-    // Logging.log(s"currentFrame is: $currentFrame")
-    _ <- if (currentFrame < frameToWaitUntil) waitUntilFrame(frameToWaitUntil) else unit
+    // logIO(s"currentFrame is: $currentFrame")
+    _ <- when (currentFrame < frameToWaitUntil)(waitUntilFrame(frameToWaitUntil))
   } yield ()
 
   private def waitUntil(c: Expr): StateT[IO, Game, Unit] = {
     val run1: StateT[IO, Game, Unit] = for {
-      // Logging.log("waiting for a frame")
+      // log("waiting for a frame")
       _ <- machine.advanceOneFrame
       _ <- syncGameState
       // printGamePad()
-      // Logging.log("recurring")
+      // log("recurring")
       _ <- waitUntil(c)
     } yield ()
 
     for {
-      //_ <- lift(Logging.log(s"waiting until $c"))
+      //_ <- log(s"waiting until $c"))
       b <- evalToBool(c)
-      //_ <- lift(Logging.log(s"b $b"))
-      _ <- if (!b.b) run1 else unit
+      //_ <- log(s"b $b"))
+      _ <- when (!b.b)(run1)
     } yield ()
   }
 
@@ -256,9 +255,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
 
     // TODO: .... we _could_ get the location through the listeners
     // not sure if that would be better or not. worth exploring.
-    _ <- lift(
-      if (playerData != game.playerData) Logging.log(("player data", playerData)) else ().pure[IO]
-    )
+    _ <- when(playerData != game.playerData)(log(("player data", playerData)))
 
     updatedGraph <- lift(discoverOverworldNodesM(game))
 
@@ -277,50 +274,32 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     // set stuff from the game into the machine
     _ <- updatedGame.pressedButton.traverse(b => lift(machine.controller.press(b)))
 
-    // get any events from the machine (TODO: and then act on them...)
-    _ <- machine.pollEvent.traverse { event =>
-      for {
-        _ <- lift(Logging.log(("== EVENT ==", event)))
-        _ <- event match {
-          // TODO this is all a giant hack
-          case BattleStarted =>
-            for {
-              _ <- lift(printEnemy)
-              _ <- setGame(updatedGame.copy(inBattle = true))
-            } yield ()
-          case _ => pure(())
-        }
-      } yield ()
-    }
-
-    _ <- if(updatedGame.inBattle) lift(printEnemy) else pure(())
-
-    /*
-       if (self:getMapId() > 0) then
-          local enemyId = self:getEnemyId()
-          local enemy = Enemies[enemyId]
-          log.debug ("entering battle vs a " .. enemy.name)
-          self.inBattle = true
-          self.enemy = enemy
-        end
-     */
-
-    // _ <- if (game.onOverworld) lift(printVisibleOverworldGrid(game)) else pure(())
+    _ <- machine.pollEvent.traverse(handleEvent)
   } yield ()
 
-  def printEnemy: IO[Unit] = for {
-    enemyId <- machine.getEnemyId
-    pd <- machine.getPlayerData
-    _ <- Logging.log(("enemyId", enemyId, loNibble(enemyId.value), hiNibble(enemyId.value)), "pd", pd)
+
+  def when(b: Boolean)(f: StateT[IO, Game, Unit]): StateT[IO, Game, Unit] =
+      if(b) f else pure(())
+
+  def log(a: Any): StateT[IO, Game, Unit] = lift(Logging.log(a))
+  def logIO(a: Any): IO[Unit] = Logging.log(a)
+
+  // get any events from the machine and update the game state
+  def handleEvent(event: Event): StateT[IO, Game, Unit] = for {
+    _ <- log(("== EVENT ==", event))
+    _ <- event match {
+      case BattleStarted(enemy) => StateT.modify[IO, Game](_.copy(inBattle = Some(enemy)))
+      case _ => pure(())
+    }
   } yield ()
 
   def pickDestination(game: Game): IO[Option[Point]] =
     if (game.onOverworld && game.destination.isEmpty) {
       val borderTiles: List[Point] = game.graph.knownWorldBorder.toList.map(_._1)
       for {
-        _ <- Logging.log(("borderTiles", borderTiles))
+        _ <- logIO(("borderTiles", borderTiles))
         newDest = borderTiles(new Random().nextInt(borderTiles.size))
-        _ <- Logging.log(("New Destination", newDest))
+        _ <- logIO(("New Destination", newDest))
       } yield Some(newDest)
     } else game.destination.pure[IO]
 
@@ -328,7 +307,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     val (updatedGraph, newlyDiscoveredPoints) = discoverOverworldNodes(game)
     for {
       _ <- newlyDiscoveredPoints.traverse(p =>
-        Logging.log(("discovered", p, game.maps.overworld.getTileAt(p.x, p.y)))
+        logIO(("discovered", p, game.maps.overworld.getTileAt(p.x, p.y)))
       )
     } yield updatedGraph
   }
@@ -341,9 +320,9 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     } else (game.graph, Seq())
 
   def printVisibleOverworldGrid(game: Game): IO[Unit] = {
-    Logging.log("-----Grid-----") *>
+    logIO("-----Grid-----") *>
       game.maps.overworld.getVisibleOverworldGrid(game.currentLoc).toList.traverse_ { row =>
-        Logging.log(row.map(_._2).mkString(","))
+        logIO(row.map(_._2).mkString(","))
       }
   }
 }
