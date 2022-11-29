@@ -18,7 +18,7 @@ case class Memory(api: API) {
 
   // we should separate the stuff above here into its own interface.
 
-  val OverWorldId: MapId     = MapId(1)
+  val OverWorldId: MapId = MapId(1)
 
   def getX: IO[Byte]         = readRAM(Address(0x8e))
   def getY: IO[Byte]         = readRAM(Address(0x8f))
@@ -32,7 +32,7 @@ case class Memory(api: API) {
 
   // get the id of the current enemy, if it exists
   // no idea what gets returned if not in battle
-  val ENEMY_ID_ADDR: Address = Address(0xE0) // this used to be 0x3c and i dont understand why
+  val ENEMY_ID_ADDR: Address              = Address(0xe0) // this used to be 0x3c and i dont understand why
   def getEnemyId: IO[EnemyId]             = readRAM(ENEMY_ID_ADDR).map(EnemyId)
   def setEnemyId(enemyId: Byte): IO[Unit] = writeRAM(ENEMY_ID_ADDR, enemyId)
 
@@ -145,7 +145,7 @@ case class Memory(api: API) {
     spells <- getSpells
     items  <- getItems
     status <- getStatuses
-  } yield PlayerData(loc, stats, eq, spells, items, status)
+  } yield PlayerData(stats, eq, spells, items, status)(loc)
 
   /*
   -- ShopItemsTbl:

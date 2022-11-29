@@ -224,8 +224,12 @@ case class Graph(nodes: Map[Point, GraphNode]) {
 
     val pathBuilder: Point => List[PathNode] = followTrailToDest(trail.trail)(_)
     dests
-      .map { dest =>
-        Path(src, dest, trail.weights(dest), pathBuilder(dest), 0)
+      .flatMap { dest =>
+        trail.weights.get(dest) match {
+          case None    => List()
+          case Some(_) => List(Path(src, dest, trail.weights(dest), pathBuilder(dest), 0))
+        }
+
       }
       .sortWith(_.weight < _.weight)
   }
@@ -273,3 +277,12 @@ case class Path(src: Point, dest: Point, weight: Int, path: List[PathNode], nrKe
 sealed trait MovementCommand
 case class OpenDoorAt(p: Point, dir: Direction)                extends MovementCommand
 case class MoveCommand(from: Point, to: Point, dir: Direction) extends MovementCommand
+
+/*
+  Logging.logUnsafe("--------- BAD PATH ---------")
+  Logging.logUnsafe("----trail----")
+  trail.trail.foreach(Logging.logUnsafe)
+  Logging.logUnsafe("----weights----")
+  trail.weights.foreach(Logging.logUnsafe)
+  Logging.logUnsafe("----------------------------")
+ */

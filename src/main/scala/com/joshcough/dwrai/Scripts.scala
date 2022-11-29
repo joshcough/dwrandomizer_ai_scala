@@ -12,8 +12,26 @@ case class Scripts(maps: GameMaps) {
   case class MapIdLit(mapId: MapId) extends Literal
   case class PositionLit(p: Point)  extends Literal
 
-  sealed trait Expr
+  sealed trait Expr {
+    def ===(e: Expr): Expr = Eq(this, e)
+    def ||(e: Expr): Expr  = Or(this, e)
+    def &&(e: Expr): Expr  = And(this, e)
+    def >(e: Expr): Expr   = Gt(this, e)
+    def >=(e: Expr): Expr  = GtEq(this, e)
+    def <(e: Expr): Expr   = Lt(this, e)
+    def <=(e: Expr): Expr  = LtEq(this, e)
+    def *(e: Expr): Expr   = Mult(this, e)
+    def /(e: Expr): Expr   = Div(this, e)
+    def +(e: Expr): Expr   = Add(this, e)
+    def -(e: Expr): Expr   = Sub(this, e)
+  }
 
+  object Value {
+    def apply(b: Boolean): Value = Value(BoolLit(b))
+    def apply(b: Int): Value     = Value(IntLit(b))
+    def apply(b: MapId): Value   = Value(MapIdLit(b))
+    def apply(b: Point): Value   = Value(PositionLit(b))
+  }
   case class Value(l: Literal)       extends Expr
   case class Not(c: Expr)            extends Expr
   sealed trait BinaryOp              extends Expr { val l: Expr; val r: Expr }
@@ -33,24 +51,42 @@ case class Scripts(maps: GameMaps) {
   case class All(cs: List[Expr])     extends Expr
   def And(l: Expr, r: Expr): Expr = All(List(l, r))
   def Or(l: Expr, r: Expr): Expr  = Exists(List(l, r))
+  val True: Expr                  = Value(true)
+  val False: Expr                 = Value(false)
 
   case object GetMapId             extends Expr
   case object GetPosition          extends Expr
   case class IsChestOpen(p: Point) extends Expr
+  case object PlayerIsDead         extends Expr
+  case object EnemyIsDead          extends Expr
+  case object InBattle             extends Expr
+  case object CurrentDestination   extends Expr
+  case object LevelingUp           extends Expr
+  case object WindowDepth          extends Expr
+  def AllWindowsClosed: Expr = WindowDepth === Value(0)
+  def AnyWindowOpen: Expr    = WindowDepth > Value(0)
 
   case class HoldButtonScript(button: Button, nrFrames: Int)   extends Script
   case class HoldButtonUntilScript(button: Button, expr: Expr) extends Script
   case class Consecutive(name: String, scripts: List[Script])  extends Script
+  case class While(expr: Expr, script: Script)                 extends Script
   case class WaitUntil(expr: Expr)                             extends Script
   case class WaitFor(nrFrames: Int)                            extends Script
   case class DebugScript(msg: String)                          extends Script
-  case class Goto(point: Point)                                extends Script
+  case object DebugPlayerData                                  extends Script
+  case object GotoDestination                                  extends Script
   case object DoNothing                                        extends Script
 
   case class SaveUnlockedDoor(loc: Point) extends Script
   case class OpenChest(loc: Point)        extends Script
+  case object SetRandomDestination        extends Script
+  case class SetDestination(p: Point)     extends Script
+  case object ClearDestination            extends Script
+
+  def Goto(point: Point) = Consecutive(s"goto $point", List(SetDestination(point), GotoDestination))
 
   case class IfThen(name: String, expr: Expr, thenBranch: Script, elseBranch: Script) extends Script
+  def When(name: String, expr: Expr, script: Script): Script = IfThen(name, expr, script, DoNothing)
 
   def OpenMenu: Script = Consecutive("Open Menu", List(A.holdFor(20), WaitFor(nrFrames = 20)))
 
@@ -116,7 +152,7 @@ case class Scripts(maps: GameMaps) {
   def GotoOverworld(from: MapId): Script =
     Goto(maps.staticMaps(from).entrances.head.from)
 
-  val ThroneRoomOpeningGame = Consecutive(
+  val ThroneRoomOpeningGame: Script = Consecutive(
     "Tantagel Throne Room Opening Game",
     List(
       // we should already be here...but, when i monkey around its better to have this.
@@ -131,7 +167,7 @@ case class Scripts(maps: GameMaps) {
       OpenChestAt(Point(TantegelThroneRoomId, 5, 4)),
       OpenChestAt(Point(TantegelThroneRoomId, 6, 1)),
       GotoOverworld(TantegelId)
-      // leaveThroneRoomScript
+      // leaveThroneRoomScript   --TODO: this would do things like use wings or cast return
     )
   )
 
@@ -206,7 +242,20 @@ Contains = class(ConditionScript, function(a, container, v)
 end)
    */
 
-  def OnMap(mapId: MapId): Expr = Eq(GetMapId, Value(MapIdLit(mapId)))
+  def OnMap(mapId: MapId): Expr = GetMapId === Value(mapId)
+
+  val BattleScript: Script =
+    Consecutive(
+      "Battle",
+      List(
+        A.holdUntil(Not(InBattle) || LevelingUp),
+        When(
+          "",
+          LevelingUp,
+          Consecutive("..", List(A.holdUntil(Not(LevelingUp)), A.holdFor(10), A.holdFor(10)))
+        )
+      )
+    )
 
   val GameStartMenuScript: Consecutive = Consecutive(
     "Game start menu",
@@ -237,5 +286,6 @@ end)
   implicit class RichButton(b: Button) {
     def holdFor(nrFrames: Int): Script =
       Consecutive(s"Hold $b for $nrFrames", List(HoldButtonScript(b, nrFrames), WaitFor(1)))
+    def holdUntil(expr: Expr): Script = HoldButtonUntilScript(b, expr)
   }
 }
