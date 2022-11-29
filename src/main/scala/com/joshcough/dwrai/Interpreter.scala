@@ -1,9 +1,11 @@
 package com.joshcough.dwrai
 
-import cats.data.StateT
+import cats.data.{IndexedStateT, StateT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.implicits._
+import com.joshcough.dwrai.Bytes.{hiNibble, loNibble}
+import com.joshcough.dwrai.Event.BattleStarted
 import com.joshcough.dwrai.MapId.TantegelThroneRoomId
 import com.joshcough.dwrai.Overworld.OverworldId
 import nintaco.api.API
@@ -12,14 +14,16 @@ import scala.util.Random
 
 case class Game(maps: GameMaps,
                 graph: Graph,
-                currentLoc: Point,
+                playerData: PlayerData,
+                levels: Seq[Level],
                 pressedButton: Option[Button],
-                destination: Option[Point] = None
+                destination: Option[Point] = None,
+                inBattle: Boolean = false
 ) {
+  def currentLoc: Point      = playerData.location
   def press(b: Button): Game = this.copy(pressedButton = Some(b))
   def releaseButton: Game    = this.copy(pressedButton = None)
-
-  def onOverworld = currentLoc.mapId == OverworldId
+  def onOverworld: Boolean   = currentLoc.mapId == OverworldId
 }
 
 case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
@@ -48,10 +52,14 @@ object Interpreter {
         new Thread(new Runnable() {
           def run(): Unit =
             (for {
-              loc <- machine.getLocation
+              playerData <- machine.getPlayerData
+              levels     <- machine.getLevels
+              _          <- Logging.log(("player data", playerData))
               game <- interpreter
                 .interpret(script)
-                .runS(Game(gameMaps, Graph.mkGraph(gameMaps), loc, pressedButton = None))
+                .runS(
+                  Game(gameMaps, Graph.mkGraph(gameMaps), playerData, levels, pressedButton = None)
+                )
               _ <- Logging.log(s"all done interpreting initial script")
               _ <- game.destination.traverse(d => interpreter.interpret(Goto(d)).runS(game))
               _ <- Logging.log(s"all done interpreting goto")
@@ -244,10 +252,13 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     game <- getGame
 
     // read stuff from machine into the game
-    loc <- lift(machine.getLocation)
+    playerData <- lift(machine.getPlayerData)
+
     // TODO: .... we _could_ get the location through the listeners
     // not sure if that would be better or not. worth exploring.
-    _ <- lift(if (loc != game.currentLoc) Logging.log(s"current loc: $loc") else ().pure[IO])
+    _ <- lift(
+      if (playerData != game.playerData) Logging.log(("player data", playerData)) else ().pure[IO]
+    )
 
     updatedGraph <- lift(discoverOverworldNodesM(game))
 
@@ -259,7 +270,7 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     // if we are on the overworld and we dont have a destination, choose one
     destination <- lift(pickDestination(gameWithUpdatedGraph))
 
-    updatedGame = gameWithUpdatedGraph.copy(currentLoc = loc, destination = destination)
+    updatedGame = gameWithUpdatedGraph.copy(playerData = playerData, destination = destination)
 
     _ <- setGame(updatedGame)
 
@@ -267,7 +278,40 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
     _ <- updatedGame.pressedButton.traverse(b => lift(machine.controller.press(b)))
 
     // get any events from the machine (TODO: and then act on them...)
-    _ <- lift(machine.pollEvent.traverse(event => Logging.log(("== EVENT ==", event))))
+    _ <- machine.pollEvent.traverse { event =>
+      for {
+        _ <- lift(Logging.log(("== EVENT ==", event)))
+        _ <- event match {
+          // TODO this is all a giant hack
+          case BattleStarted =>
+            for {
+              _ <- lift(printEnemy)
+              _ <- setGame(updatedGame.copy(inBattle = true))
+            } yield ()
+          case _ => pure(())
+        }
+      } yield ()
+    }
+
+    _ <- if(updatedGame.inBattle) lift(printEnemy) else pure(())
+
+    /*
+       if (self:getMapId() > 0) then
+          local enemyId = self:getEnemyId()
+          local enemy = Enemies[enemyId]
+          log.debug ("entering battle vs a " .. enemy.name)
+          self.inBattle = true
+          self.enemy = enemy
+        end
+     */
+
+    // _ <- if (game.onOverworld) lift(printVisibleOverworldGrid(game)) else pure(())
+  } yield ()
+
+  def printEnemy: IO[Unit] = for {
+    enemyId <- machine.getEnemyId
+    pd <- machine.getPlayerData
+    _ <- Logging.log(("enemyId", enemyId, loNibble(enemyId.value), hiNibble(enemyId.value)), "pd", pd)
   } yield ()
 
   def pickDestination(game: Game): IO[Option[Point]] =
@@ -296,7 +340,6 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
       game.graph.discover(grid.flatten.map(_._1))
     } else (game.graph, Seq())
 
-  //_ <- if (game.onOverworld) lift(printVisibleOverworldGrid(game)) else pure(())
   def printVisibleOverworldGrid(game: Game): IO[Unit] = {
     Logging.log("-----Grid-----") *>
       game.maps.overworld.getVisibleOverworldGrid(game.currentLoc).toList.traverse_ { row =>

@@ -78,7 +78,7 @@ object Graph {
   def mkOverworldGraph(overworld: Overworld): Graph = {
     def neighbors(x: Int, y: Int): Set[Neighbor] = {
       def f(inBounds: Boolean, x_ : Int, y_ : Int, dir: Direction): List[Neighbor] =
-        if(inBounds) {
+        if (inBounds) {
           if (overworld.getTileAt(x_, y_).walkable)
             List(Neighbor(Point(OverworldId, x_, y_), dir))
           else List()
@@ -230,6 +230,11 @@ case class Graph(nodes: Map[Point, GraphNode]) {
       .sortWith(_.weight < _.weight)
   }
 
+  /* This should only ever be called on overworld nodes
+   * TODO: But I think it makes sense to also all it on the two dungeons
+   * that need to be discovered. We should make their two entrances
+   * "unknown" in the graph.
+   */
   def discover(ps: Seq[Point]): (Graph, Seq[Point]) = {
     val undiscoveredNodes = ps.filter(p => !nodes(p).isKnown)
     val updatedGraph      = Graph(nodes ++ undiscoveredNodes.map(p => (p, nodes(p).mkKnown)).toMap)
@@ -239,7 +244,7 @@ case class Graph(nodes: Map[Point, GraphNode]) {
   // NOTE: if this is slow we could call it whenever discover is called and cache it
   def knownWorldBorder: Set[(Point, GraphNode)] = {
     // Logging.logUnsafe("OVERWORLD NODES!")
-    nodes.toList.filter { case (p, _) => p.mapId == OverworldId }.foreach(Logging.logUnsafe)
+    // nodes.toList.filter { case (p, _) => p.mapId == OverworldId }.foreach(Logging.logUnsafe)
     nodes.filter { case (p, gn) =>
       p.mapId == OverworldId && (gn.nodeType match {
         case Unknown => false
