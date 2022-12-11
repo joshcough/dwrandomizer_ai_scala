@@ -29,7 +29,6 @@ package object dwrai {
     def <=(a: RomAddress): Boolean = value <= a.value
   }
 
-
   case class MapId(value: Int)
 
   object MapId {

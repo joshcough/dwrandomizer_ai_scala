@@ -50,42 +50,20 @@ case class Game(maps: GameMaps,
 case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
 
 object Interpreter {
-  def runMain(api: API): IO[Unit] = {
-    val mem     = Memory(api)
+  def runMain(api: API): IO[Unit] = IO {
+    val aiThread = new Thread(new Runnable() {
+      def run(): Unit = runNewGame(api).unsafeRunSync()
+    })
+    aiThread.start()
+    api.addDeactivateListener(() => aiThread.interrupt())
+  }
+
+  def runNewGame(api: API): IO[Unit] = {
     val machine = Machine(api)
     for {
-      staticMaps <- StaticMap.readAllStaticMapsFromRom(mem)
-      overworld  <- Overworld.readOverworldFromROM(mem)
-      gameMaps    = GameMaps(staticMaps, overworld)
-      scripts     = Scripts(gameMaps)
-      interpreter = Interpreter(machine, scripts)
-      _ <- IO {
-        import interpreter.scripts._
-        val script: Script = Consecutive(
-          "DWR AI",
-          List(
-            DebugScript("starting interpreter"),
-            GameStartMenuScript,
-            WaitUntil(OnMap(TantegelThroneRoomId)),
-            ThroneRoomOpeningGame,
-            While(True, Consecutive("...", List(SetRandomDestination, GotoDestination)))
-          )
-        )
-
-        val runAi: IO[Unit] = for {
-          playerData <- machine.getPlayerData
-          levels     <- machine.getLevels
-          _          <- Logging.log(("player data", playerData))
-          newGame = Game(gameMaps, Graph.mkGraph(gameMaps), playerData, levels)
-          _ <- interpreter.interpret(script).runS(newGame)
-        } yield ()
-
-        val aiThread = new Thread(new Runnable() {
-          def run(): Unit = runAi.unsafeRunSync()
-        })
-        aiThread.start()
-        api.addDeactivateListener(() => aiThread.interrupt())
-      }
+      newGame <- machine.newGame
+      interpreter = Interpreter(machine, newGame.maps)
+      _ <- interpreter.interpret(interpreter.mainScript).runS(newGame)
     } yield ()
   }
 
@@ -113,13 +91,26 @@ object Interpreter {
   }
 }
 
-case class Interpreter(machine: Machine, scripts: Scripts) {
+case class Interpreter(machine: Machine, gameMaps: GameMaps) {
 
   import Interpreter.ConditionRes._
+
+  val scripts = Scripts(gameMaps)
   import scripts._
 
   type GameAction[T] = StateT[IO, Game, T]
   type GameAction_   = GameAction[Unit]
+
+  val mainScript: Script = Consecutive(
+    "DWR AI",
+    List(
+      DebugScript("starting interpreter"),
+      GameStartMenuScript,
+      WaitUntil(OnMap(TantegelThroneRoomId)),
+      ThroneRoomOpeningGame,
+      While(True, Consecutive("...", List(SetRandomDestination, GotoDestination)))
+    )
+  )
 
   def interpret(script: Script): GameAction_ = {
     val run: GameAction_ = script match {
@@ -280,7 +271,6 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
 
     _ <- getGame.flatMap(g => log(("leveled up", g.levelingUp)))
 
-    // TODO this is sketchy
     _ <- getGame.flatMap(g => when(g.battleScriptRequired)(executeBattle))
   } yield ()
 

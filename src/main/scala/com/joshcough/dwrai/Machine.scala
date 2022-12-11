@@ -94,4 +94,17 @@ case class Machine(private val api: API) {
   def getLevels: IO[Seq[Level]]              = memory.getLevels
   def getEnemyId: IO[EnemyId]                = memory.getEnemyId
   def setEnemyId(enemyId: EnemyId): IO[Unit] = memory.setEnemyId(enemyId.value)
+
+  def newGame: IO[Game] = {
+    val mem = Memory(api)
+    for {
+      staticMaps <- StaticMap.readAllStaticMapsFromRom(mem)
+      overworld  <- Overworld.readOverworldFromROM(mem)
+      gameMaps = GameMaps(staticMaps, overworld)
+      playerData <- getPlayerData
+      levels     <- getLevels
+      _          <- Logging.log(("player data", playerData))
+    } yield Game(gameMaps, Graph.mkGraph(gameMaps), playerData, levels)
+  }
+
 }

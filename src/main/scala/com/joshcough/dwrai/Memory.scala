@@ -32,7 +32,7 @@ case class Memory(api: API) {
 
   // get the id of the current enemy, if it exists
   // no idea what gets returned if not in battle
-  val ENEMY_ID_ADDR: RamAddress              = RamAddress(0xe0) // this used to be 0x3c and i dont understand why
+  val ENEMY_ID_ADDR: RamAddress           = RamAddress(0xe0) // this used to be 0x3c and i dont understand why
   def getEnemyId: IO[EnemyId]             = readRAM(ENEMY_ID_ADDR).map(EnemyId)
   def setEnemyId(enemyId: Byte): IO[Unit] = writeRAM(ENEMY_ID_ADDR, enemyId)
 
