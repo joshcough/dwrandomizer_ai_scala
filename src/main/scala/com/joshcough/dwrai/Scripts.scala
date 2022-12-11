@@ -250,7 +250,7 @@ end)
       List(
         A.holdUntil(Not(InBattle) || LevelingUp),
         When(
-          "",
+          "Leveling up",
           LevelingUp,
           Consecutive("..", List(A.holdUntil(Not(LevelingUp)), A.holdFor(10), A.holdFor(10)))
         )

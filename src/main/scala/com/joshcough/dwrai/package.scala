@@ -15,12 +15,20 @@ package object dwrai {
   case class AttackPower(value: Int)
   case class DefensePower(value: Int)
 
-  case class Address(value: Int) {
-    def +(i: Int): Address      = Address(value + i)
-    def -(i: Int): Address      = Address(value - i)
-    def <(a: Address): Boolean  = value < a.value
-    def <=(a: Address): Boolean = value <= a.value
+  case class RamAddress(value: Int) {
+    def +(i: Int): RamAddress      = RamAddress(value + i)
+    def -(i: Int): RamAddress      = RamAddress(value - i)
+    def <(a: RamAddress): Boolean  = value < a.value
+    def <=(a: RamAddress): Boolean = value <= a.value
   }
+
+  case class RomAddress(value: Int) {
+    def +(i: Int): RomAddress      = RomAddress(value + i)
+    def -(i: Int): RomAddress      = RomAddress(value - i)
+    def <(a: RomAddress): Boolean  = value < a.value
+    def <=(a: RomAddress): Boolean = value <= a.value
+  }
+
 
   case class MapId(value: Int)
 

@@ -148,7 +148,10 @@ case class Interpreter(machine: Machine, scripts: Scripts) {
       case GotoDestination =>
         getGame.flatMap { g =>
           interpret(
-            Consecutive("", List(goto(g.destination.getOrElse(fail("boom!")))(g), ClearDestination))
+            Consecutive(
+              "Going to destination",
+              List(goto(g.destination.getOrElse(fail("boom!")))(g), ClearDestination)
+            )
           )
         }
       case SetDestination(p) => modifyGame(g => g.copy(destination = Some(p)))

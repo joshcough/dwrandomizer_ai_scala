@@ -65,13 +65,13 @@ object MapType {
 
 // 'to' is the source, and `warpRomAddr` contains the address to read the `from`
 // also seen Entrance right below.
-case class EntranceMetadata(to: Point, warpRomAddr: Address, entranceType: ImportantLocationType)
+case class EntranceMetadata(to: Point, warpRomAddr: RomAddress, entranceType: ImportantLocationType)
 
 case class StaticMapMetadata(id: MapId,
                              name: String,
                              mapType: MapType,
                              size: MapSize,
-                             romAddress: Address,
+                             romAddress: RomAddress,
                              entrances: List[EntranceMetadata],
                              childrenIds: List[MapId] = List(),
                              immobileNpcs: List[(Int, Int)] = List()
@@ -85,24 +85,24 @@ object StaticMapMetadata {
       "Charlock",
       MapType.Both,
       MapSize(Width(20), Height(20)),
-      romAddress = Address(0xc0),
-      entrances = List(EntranceMetadata(Point(CharlockId, 10, 19), Address(0xf3ea), CHARLOCK))
+      romAddress = RomAddress(0xc0),
+      entrances = List(EntranceMetadata(Point(CharlockId, 10, 19), RomAddress(0xf3ea), CHARLOCK))
     ),
     HauksnessId -> StaticMapMetadata(
       HauksnessId,
       "Hauksness",
       MapType.Both,
       MapSize(Width(20), Height(20)),
-      romAddress = Address(0x188),
-      entrances = List(EntranceMetadata(Point(HauksnessId, 0, 10), Address(0xf3f6), TOWN))
+      romAddress = RomAddress(0x188),
+      entrances = List(EntranceMetadata(Point(HauksnessId, 0, 10), RomAddress(0xf3f6), TOWN))
     ),
     TantegelId -> StaticMapMetadata(
       TantegelId,
       "Tantegel",
       MapType.Town,
       MapSize(Width(30), Height(30)),
-      romAddress = Address(0x250),
-      entrances = List(EntranceMetadata(Point(TantegelId, 11, 29), Address(0xf3e4), TANTEGEL)),
+      romAddress = RomAddress(0x250),
+      entrances = List(EntranceMetadata(Point(TantegelId, 11, 29), RomAddress(0xf3e4), TANTEGEL)),
       immobileNpcs = List((2, 8), (8, 6), (8, 8), (27, 5), (26, 15), (9, 27), (12, 27), (15, 20))
     ),
     TantegelThroneRoomId -> StaticMapMetadata(
@@ -110,7 +110,7 @@ object StaticMapMetadata {
       "Tantegel Throne Room",
       MapType.Other,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0x412),
+      romAddress = RomAddress(0x412),
       entrances = List(),
       immobileNpcs = List((3, 3), (3, 6), (5, 6))
     ),
@@ -119,7 +119,7 @@ object StaticMapMetadata {
       "Charlock Throne Room",
       MapType.Dungeon,
       MapSize(Width(30), Height(30)),
-      romAddress = Address(0x444),
+      romAddress = RomAddress(0x444),
       entrances = List()
     ),
     KolId -> StaticMapMetadata(
@@ -127,16 +127,16 @@ object StaticMapMetadata {
       "Kol",
       MapType.Town,
       MapSize(Width(24), Height(24)),
-      romAddress = Address(0x606),
-      entrances = List(EntranceMetadata(Point(KolId, 19, 23), Address(0xf3de), TOWN))
+      romAddress = RomAddress(0x606),
+      entrances = List(EntranceMetadata(Point(KolId, 19, 23), RomAddress(0xf3de), TOWN))
     ),
     BrecconaryId -> StaticMapMetadata(
       BrecconaryId,
       "Brecconary",
       MapType.Town,
       MapSize(Width(30), Height(30)),
-      romAddress = Address(0x726),
-      entrances = List(EntranceMetadata(Point(BrecconaryId, 0, 15), Address(0xf3e1), TOWN)),
+      romAddress = RomAddress(0x726),
+      entrances = List(EntranceMetadata(Point(BrecconaryId, 0, 15), RomAddress(0xf3e1), TOWN)),
       immobileNpcs = List((1, 13), (4, 7), (10, 26), (20, 23), (28, 1))
     ),
     GarinhamId -> StaticMapMetadata(
@@ -144,8 +144,8 @@ object StaticMapMetadata {
       "Garinham",
       MapType.Town,
       MapSize(Width(20), Height(20)),
-      romAddress = Address(0xaaa),
-      entrances = List(EntranceMetadata(Point(GarinhamId, 0, 14), Address(0xf3d8), TOWN)),
+      romAddress = RomAddress(0xaaa),
+      entrances = List(EntranceMetadata(Point(GarinhamId, 0, 14), RomAddress(0xf3d8), TOWN)),
       immobileNpcs = List((1, 13), (4, 7), (10, 26), (20, 23), (28, 1))
     ),
     CantlinId -> StaticMapMetadata(
@@ -153,8 +153,8 @@ object StaticMapMetadata {
       "Cantlin",
       MapType.Town,
       MapSize(Width(30), Height(30)),
-      romAddress = Address(0x8e8),
-      entrances = List(EntranceMetadata(Point(CantlinId, 5, 15), Address(0xf3f9), TOWN)),
+      romAddress = RomAddress(0x8e8),
+      entrances = List(EntranceMetadata(Point(CantlinId, 5, 15), RomAddress(0xf3f9), TOWN)),
       immobileNpcs = List((0, 0))
     ),
     RimuldarId -> StaticMapMetadata(
@@ -162,8 +162,8 @@ object StaticMapMetadata {
       "Rimuldar",
       MapType.Town,
       MapSize(Width(30), Height(30)),
-      romAddress = Address(0xb72),
-      entrances = List(EntranceMetadata(Point(RimuldarId, 29, 14), Address(0xf3f3), TOWN)),
+      romAddress = RomAddress(0xb72),
+      entrances = List(EntranceMetadata(Point(RimuldarId, 29, 14), RomAddress(0xf3f3), TOWN)),
       immobileNpcs = List((2, 4), (27, 0))
     ),
     TantegelBasementId -> StaticMapMetadata(
@@ -171,11 +171,11 @@ object StaticMapMetadata {
       "Tantegel Basement",
       MapType.Other,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xd34),
+      romAddress = RomAddress(0xd34),
       entrances = List(
         EntranceMetadata(
           Point(TantegelBasementId, 0, 4),
-          Address(0xf40b),
+          RomAddress(0xf40b),
           CAVE
         )
       )
@@ -185,31 +185,31 @@ object StaticMapMetadata {
       "Northern Shrine",
       MapType.Other,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xd66),
-      entrances = List(EntranceMetadata(Point(NorthernShrineId, 4, 9), Address(0xf3db), CAVE))
+      romAddress = RomAddress(0xd66),
+      entrances = List(EntranceMetadata(Point(NorthernShrineId, 4, 9), RomAddress(0xf3db), CAVE))
     ),
     NorthernShrineId -> StaticMapMetadata(
       NorthernShrineId,
       "Northern Shrine",
       MapType.Other,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xd66),
-      entrances = List(EntranceMetadata(Point(NorthernShrineId, 4, 9), Address(0xf3db), CAVE))
+      romAddress = RomAddress(0xd66),
+      entrances = List(EntranceMetadata(Point(NorthernShrineId, 4, 9), RomAddress(0xf3db), CAVE))
     ),
     SouthernShrineId -> StaticMapMetadata(
       SouthernShrineId,
       "Southern Shrine",
       MapType.Other,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xd98),
-      entrances = List(EntranceMetadata(Point(SouthernShrineId, 0, 4), Address(0xf3fc), CAVE))
+      romAddress = RomAddress(0xd98),
+      entrances = List(EntranceMetadata(Point(SouthernShrineId, 0, 4), RomAddress(0xf3fc), CAVE))
     ),
     CharlockCaveLv1Id -> StaticMapMetadata(
       CharlockCaveLv1Id,
       "Charlock Cave Lv 1",
       MapType.Dungeon,
       MapSize(Width(20), Height(20)),
-      romAddress = Address(0xdca),
+      romAddress = RomAddress(0xdca),
       entrances = List()
     ),
     CharlockCaveLv2Id -> StaticMapMetadata(
@@ -217,7 +217,7 @@ object StaticMapMetadata {
       "Charlock Cave Lv 2",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xe92),
+      romAddress = RomAddress(0xe92),
       entrances = List()
     ),
     CharlockCaveLv3Id -> StaticMapMetadata(
@@ -225,7 +225,7 @@ object StaticMapMetadata {
       "Charlock Cave Lv 3",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xec4),
+      romAddress = RomAddress(0xec4),
       entrances = List()
     ),
     CharlockCaveLv4Id -> StaticMapMetadata(
@@ -233,7 +233,7 @@ object StaticMapMetadata {
       "Charlock Cave Lv 4",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xef6),
+      romAddress = RomAddress(0xef6),
       entrances = List()
     ),
     CharlockCaveLv5Id -> StaticMapMetadata(
@@ -241,7 +241,7 @@ object StaticMapMetadata {
       "Charlock Cave Lv 5",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xf28),
+      romAddress = RomAddress(0xf28),
       entrances = List()
     ),
     CharlockCaveLv6Id -> StaticMapMetadata(
@@ -249,7 +249,7 @@ object StaticMapMetadata {
       "Charlock Cave Lv 6",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0xf5a),
+      romAddress = RomAddress(0xf5a),
       entrances = List()
     ),
     SwampCaveId -> StaticMapMetadata(
@@ -257,10 +257,10 @@ object StaticMapMetadata {
       "Swamp Cave",
       MapType.Dungeon,
       MapSize(Width(6), Height(30)),
-      romAddress = Address(0xf8c),
+      romAddress = RomAddress(0xf8c),
       entrances = List(
-        EntranceMetadata(Point(SwampCaveId, 0, 0), Address(0xf3e7), CAVE),
-        EntranceMetadata(Point(SwampCaveId, 0, 29), Address(0xf3ed), CAVE)
+        EntranceMetadata(Point(SwampCaveId, 0, 0), RomAddress(0xf3e7), CAVE),
+        EntranceMetadata(Point(SwampCaveId, 0, 29), RomAddress(0xf3ed), CAVE)
       )
     ),
     MountainCaveLv1Id -> StaticMapMetadata(
@@ -268,11 +268,11 @@ object StaticMapMetadata {
       "Mountain Cave",
       MapType.Dungeon,
       MapSize(Width(14), Height(14)),
-      romAddress = Address(0xfe6),
+      romAddress = RomAddress(0xfe6),
       entrances = List(
         EntranceMetadata(
           Point(MountainCaveLv1Id, 0, 7),
-          Address(0xf3f0),
+          RomAddress(0xf3f0),
           CAVE
         )
       )
@@ -282,7 +282,7 @@ object StaticMapMetadata {
       "Mountain Cave Lv 2",
       MapType.Dungeon,
       MapSize(Width(14), Height(14)),
-      romAddress = Address(0x1048),
+      romAddress = RomAddress(0x1048),
       entrances = List()
     ),
     GarinsGraveLv1Id -> StaticMapMetadata(
@@ -290,11 +290,11 @@ object StaticMapMetadata {
       "Garin's Grave Lv 1",
       MapType.Dungeon,
       MapSize(Width(20), Height(20)),
-      romAddress = Address(0x10aa),
+      romAddress = RomAddress(0x10aa),
       entrances = List(
         EntranceMetadata(
           Point(GarinsGraveLv1Id, 6, 11),
-          Address(0xf411),
+          RomAddress(0xf411),
           CAVE
         )
       )
@@ -304,7 +304,7 @@ object StaticMapMetadata {
       "Garin's Grave Lv 2",
       MapType.Dungeon,
       MapSize(Width(14), Height(12)),
-      romAddress = Address(0x126c),
+      romAddress = RomAddress(0x126c),
       entrances = List()
     ),
     GarinsGraveLv3Id -> StaticMapMetadata(
@@ -312,7 +312,7 @@ object StaticMapMetadata {
       "Garin's Grave Lv 3",
       MapType.Dungeon,
       MapSize(Width(20), Height(20)),
-      romAddress = Address(0x1172),
+      romAddress = RomAddress(0x1172),
       entrances = List()
     ),
     GarinsGraveLv4Id -> StaticMapMetadata(
@@ -320,7 +320,7 @@ object StaticMapMetadata {
       "Garin's Grave Lv 4",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0x123a),
+      romAddress = RomAddress(0x123a),
       entrances = List()
     ),
     ErdricksCaveLv1Id -> StaticMapMetadata(
@@ -328,11 +328,11 @@ object StaticMapMetadata {
       "Erdrick's Cave",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0x12c0),
+      romAddress = RomAddress(0x12c0),
       entrances = List(
         EntranceMetadata(
           Point(ErdricksCaveLv1Id, 0, 0),
-          Address(0xf3ff),
+          RomAddress(0xf3ff),
           CAVE
         )
       )
@@ -342,7 +342,7 @@ object StaticMapMetadata {
       "Erdrick's Cave Lv 2",
       MapType.Dungeon,
       MapSize(Width(10), Height(10)),
-      romAddress = Address(0x12f2),
+      romAddress = RomAddress(0x12f2),
       entrances = List()
     )
   )
@@ -432,7 +432,7 @@ object StaticMap {
       val offset = (y * mapMetadata.size.width.value) + x
       for {
         value <- memory.readROM(
-          Address(mapMetadata.romAddress.value - 16 + math.floor(offset / 2).toInt)
+          RomAddress(mapMetadata.romAddress.value - 16 + math.floor(offset / 2).toInt)
         )
         tile = if (offset % 2 == 0) hiNibble(value) else loNibble(value)
       } yield tileSet(if (mapMetadata.id.value < 12) tile else tile & 7)
