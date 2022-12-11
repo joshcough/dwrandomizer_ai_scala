@@ -19,9 +19,9 @@ case class Machine(private val api: API) {
 
   val eventsQueue: BlockingQueue[Event] = new ArrayBlockingQueue[Event](10000)
 
-  def cheat: IO[Unit] = memory.writeRAM(Address(0xbe), 255.toByte)
+  def cheat: IO[Unit] = memory.writeRAM(RamAddress(0xbe), 255.toByte)
 
-  def addWriteListener(address: Address)(f: Int => Event): Unit =
+  def addWriteListener(address: RamAddress)(f: Int => Event): Unit =
     api.addAccessPointListener(
       (accessPointType: Int, address: Int, newValue: Int) => {
         eventsQueue.put(f(newValue)); newValue
@@ -30,7 +30,7 @@ case class Machine(private val api: API) {
       address.value
     )
 
-  def addExecuteListener(address: Address)(f: Int => Event): Unit =
+  def addExecuteListener(address: RamAddress)(f: Int => Event): Unit =
     api.addAccessPointListener(
       (_accessPointType: Int, _address: Int, newValue: Int) => {
         eventsQueue.put(f(newValue)); newValue
@@ -39,7 +39,7 @@ case class Machine(private val api: API) {
       address.value
     )
 
-  def addExecuteListenerM(address: Address, apt: Int = AccessPointType.PostExecute)(
+  def addExecuteListenerM(address: RamAddress, apt: Int = AccessPointType.PostExecute)(
       f: Int => IO[Event]
   ): Unit =
     api.addAccessPointListener(
@@ -52,31 +52,31 @@ case class Machine(private val api: API) {
       address.value
     )
 
-  addWriteListener(Address(0x45))(MapChange)
-  addWriteListener(Address(0xd8))(WindowXCursor)
-  addWriteListener(Address(0xd9))(WindowYCursor)
+  addWriteListener(RamAddress(0x45))(MapChange)
+  addWriteListener(RamAddress(0xd8))(WindowXCursor)
+  addWriteListener(RamAddress(0xd9))(WindowYCursor)
 
-  addExecuteListenerM(Address(0xe4df))(_ =>
+  addExecuteListenerM(RamAddress(0xe4df))(_ =>
     getEnemyId.map(enemyId => BattleStarted(Enemy.enemiesMap(enemyId)))
   )
 
-  addExecuteListener(Address(0xefc8))(_ => EnemyRun)
-  addExecuteListener(Address(0xe8a4))(_ => PlayerRunSuccess)
-  addExecuteListener(Address(0xe89d))(_ => PlayerRunFailed)
-  addExecuteListener(Address(0xca83))(_ => EndRepelTimer)
+  addExecuteListener(RamAddress(0xefc8))(_ => EnemyRun)
+  addExecuteListener(RamAddress(0xe8a4))(_ => PlayerRunSuccess)
+  addExecuteListener(RamAddress(0xe89d))(_ => PlayerRunFailed)
+  addExecuteListener(RamAddress(0xca83))(_ => EndRepelTimer)
   // LEA90:  LDA #MSC_LEVEL_UP ;Level up music.
-  addExecuteListener(Address(0xea90))(_ => LevelUp)
-  addExecuteListener(Address(0xeb18))(_ => DoneLevelingUp)
+  addExecuteListener(RamAddress(0xea90))(_ => LevelUp)
+  addExecuteListener(RamAddress(0xeb18))(_ => DoneLevelingUp)
   // LCDE6:  LDA #$00 ;Player is dead. set HP to 0.
-  addExecuteListener(Address(0xcdf8))(_ => DeathBySwamp)
-  addExecuteListener(Address(0xe98f))(_ => EnemyDefeated)
+  addExecuteListener(RamAddress(0xcdf8))(_ => DeathBySwamp)
+  addExecuteListener(RamAddress(0xe98f))(_ => EnemyDefeated)
   // PlayerHasDied: LED9C:  LDA #MSC_DEATH ;Death music.
-  addExecuteListener(Address(0xed9c))(_ => PlayerDefeated)
-  addExecuteListener(Address(0xcf5a))(_ => OpenCmdWindow)
-  addExecuteListener(Address(0xcf6a))(_ => CloseCmdWindow)
-  addExecuteListener(Address(0xee90))(_ => FightEnded)
-  addExecuteListener(Address(0xc6f0))(_ => WindowOpened)
-  addExecuteListener(Address(0xa7a2))(_ => WindowRemoved)
+  addExecuteListener(RamAddress(0xed9c))(_ => PlayerDefeated)
+  addExecuteListener(RamAddress(0xcf5a))(_ => OpenCmdWindow)
+  addExecuteListener(RamAddress(0xcf6a))(_ => CloseCmdWindow)
+  addExecuteListener(RamAddress(0xee90))(_ => FightEnded)
+  addExecuteListener(RamAddress(0xc6f0))(_ => WindowOpened)
+  addExecuteListener(RamAddress(0xa7a2))(_ => WindowRemoved)
 
   def getFrameCount: IO[Int] = IO(api.getFrameCount)
   def getLocation: IO[Point] = memory.getLocation
