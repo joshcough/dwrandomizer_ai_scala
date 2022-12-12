@@ -6,10 +6,9 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.implicits._
 import com.joshcough.dwrai.Event._
-import com.joshcough.dwrai.MapId.TantegelThroneRoomId
-import com.joshcough.dwrai.Overworld.OverworldId
 import nintaco.api.API
 
+import com.joshcough.dwrai.Overworld.OverworldId
 import scala.util.Random
 
 case class Battle(enemy: Enemy,
@@ -17,6 +16,8 @@ case class Battle(enemy: Enemy,
                   enemyIsDead: Boolean = false,
                   battleScriptStarted: Boolean = false
 )
+
+case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
 
 case class Game(maps: GameMaps,
                 graph: Graph,
@@ -36,18 +37,42 @@ case class Game(maps: GameMaps,
   def releaseButton: Game    = this.copy(pressedButton = None)
   def onOverworld: Boolean   = currentLoc.mapId == OverworldId
 
-  def battleStarted: Boolean = battle.exists(_.battleScriptStarted)
-  def battleScriptRequired   = battle.isDefined && !battleStarted
-  def startBattle: Game =
-    this.copy(battle = this.battle.map(b => b.copy(battleScriptStarted = true)))
+  def battleStarted: Boolean        = battle.exists(_.battleScriptStarted)
+  def battleScriptRequired: Boolean = battle.isDefined && !battleStarted
+  def startBattle: Game             = copy(battle = battle.map(b => b.copy(battleScriptStarted = true)))
 
   def discoverOverworldNodes: (Graph, Seq[Point]) =
     if (onOverworld)
       graph.discover(maps.overworld.getVisibleOverworldGrid(currentLoc).flatten.map(_._1))
     else (graph, Seq())
-}
 
-case class GameMaps(staticMaps: Map[MapId, StaticMap], overworld: Overworld)
+  def shortestPaths(to: Point): List[Path] = graph.shortestPath(currentLoc, List(to), 0, _ => 1)
+
+  def encounter(enemy: Enemy): Game = {
+    val newEnemyLocs = enemyLocs.get(enemy.id).map(_ + currentLoc).getOrElse(Set(currentLoc))
+    copy(battle = Some(Battle(enemy)), enemyLocs = enemyLocs + (enemy.id -> newEnemyLocs))
+  }
+
+  def playerDefeated: Game = copy(battle = Some(battle.get.copy(playerIsDead = true)))
+  def enemyDefeated: Game  = copy(battle = Some(battle.get.copy(enemyIsDead = true)))
+
+  def unlockDoor(at: Point): Game = copy(unlockedDoors = unlockedDoors + at)
+  def openChest(at: Point): Game  = copy(openChests = openChests + at)
+
+  def setDestination(p: Point): Game = copy(destination = Some(p))
+  def clearDestination: Game         = copy(destination = None)
+  def pickRandomDestination: Game =
+    copy(destination = if (onOverworld && destination.isEmpty) {
+      val borderTiles: List[Point] = graph.knownWorldBorder.toList.map(_._1)
+      Logging.logUnsafe(("borderTiles", borderTiles))
+      val newDest = borderTiles(new Random().nextInt(borderTiles.size))
+      Logging.logUnsafe(("New Destination", newDest))
+      Some(newDest)
+    } else destination)
+
+  def visibleGrid: Seq[IndexedSeq[(Point, Overworld.Tile)]] =
+    maps.overworld.getVisibleOverworldGrid(currentLoc).toList
+}
 
 object Interpreter {
   def runMain(api: API): IO[Unit] = IO {
@@ -63,7 +88,7 @@ object Interpreter {
     for {
       newGame <- machine.newGame
       interpreter = Interpreter(machine, newGame.maps)
-      _ <- interpreter.interpret(interpreter.mainScript).runS(newGame)
+      _ <- interpreter.interpret(interpreter.scripts.mainScript).runS(newGame)
     } yield ()
   }
 
@@ -95,22 +120,11 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
 
   import Interpreter.ConditionRes._
 
-  val scripts = Scripts(gameMaps)
+  val scripts: Scripts = Scripts(gameMaps)
   import scripts._
 
   type GameAction[T] = StateT[IO, Game, T]
   type GameAction_   = GameAction[Unit]
-
-  val mainScript: Script = Consecutive(
-    "DWR AI",
-    List(
-      DebugScript("starting interpreter"),
-      GameStartMenuScript,
-      WaitUntil(OnMap(TantegelThroneRoomId)),
-      ThroneRoomOpeningGame,
-      While(True, Consecutive("...", List(SetRandomDestination, GotoDestination)))
-    )
-  )
 
   def interpret(script: Script): GameAction_ = {
     val run: GameAction_ = script match {
@@ -131,24 +145,18 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
         loop
       // These are higher level scripts that require the game
       // which leads me to believe there should be a separate GameScript constructor or something.
-      case SaveUnlockedDoor(at: Point) =>
-        modifyGame(g => g.copy(unlockedDoors = g.unlockedDoors + at))
-      case OpenChest(at: Point) => modifyGame(g => g.copy(openChests = g.openChests + at))
+      case SaveUnlockedDoor(at: Point) => modifyGame(_.unlockDoor(at))
+      case OpenChest(at: Point)        => modifyGame(_.openChest(at))
       case Move(from, to, dir) =>
         withButton(Button.fromDir(dir))(waitUntil(Or(Eq(GetPosition, Value(to)), InBattle)))
       case GotoDestination =>
         getGame.flatMap { g =>
-          interpret(
-            Consecutive(
-              "Going to destination",
-              List(goto(g.destination.getOrElse(fail("boom!")))(g), ClearDestination)
-            )
-          )
+          val to: Point = g.destination.getOrElse(fail("boom!"))
+          interpret(scripts.gotoDestination(g.currentLoc, to)(g.shortestPaths(to)))
         }
-      case SetDestination(p) => modifyGame(g => g.copy(destination = Some(p)))
-      case SetRandomDestination =>
-        modifyGameF(g => pickDestination(g).map(p => g.copy(destination = p)))
-      case ClearDestination => modifyGame(g => g.copy(destination = None))
+      case SetDestination(p)    => modifyGame(g => g.copy(destination = Some(p)))
+      case SetRandomDestination => modifyGame(_.pickRandomDestination)
+      case ClearDestination     => modifyGame(g => g.copy(destination = None))
     }
     log(s"interpreting: $script") *> run *> syncGameState
   }
@@ -156,57 +164,51 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
   def withButton(button: Button)(action: GameAction_): GameAction_ =
     press(button) *> action *> releaseAll
 
-  def goto(to: Point)(game: Game): Script = {
-    val from: Point       = game.currentLoc
-    val paths: List[Path] = game.graph.shortestPath(from, List(to), 0, _ => 1)
-    paths match {
-      case Nil => DebugScript(s"WARNING: Could not find a path to $to!")
-      case path :: _ =>
-        Consecutive(
-          s"Goto $to from $from",
-          path.convertPathToCommands.map {
-            case OpenDoorAt(p, dir)          => OpenDoor(p, dir)
-            case MoveCommand(from, to, Warp) => TakeStairs(from, to)
-            case MoveCommand(from, to, dir)  => Move(from, to, dir)
-          }
-        )
+  def goto(to: Point)(game: Game): Script =
+    scripts.goto(game.currentLoc, to)(game.shortestPaths(to))
+
+  def eval(expr: Expr): GameAction[ConditionRes] = {
+    val go: GameAction[ConditionRes] = expr match {
+      // Literals
+      case Value(IntLit(v))      => pure(IntRes(v))
+      case Value(BoolLit(v))     => pure(BoolRes(v))
+      case Value(MapIdLit(v))    => pure(MapIdRes(v))
+      case Value(PositionLit(p)) => pure(PositionRes(p))
+
+      // Language level Exprs
+      case Not(c)      => evalToBool(c).map(_.negate)
+      case Eq(l, r)    => for { l_ <- eval(l); r_ <- eval(r) } yield BoolRes(l_ == r_)
+      case NotEq(l, r) => for { l_ <- eval(l); r_ <- eval(r) } yield BoolRes(l_ != r_)
+      case Add(l, r)   => intOp(l, r)(_ + _)
+      case Sub(l, r)   => intOp(l, r)(_ - _)
+      case Mult(l, r)  => intOp(l, r)(_ * _)
+      case Div(l, r)   => intOp(l, r)(_ / _)
+      case Min(l, r)   => intOp(l, r)(IntRes.min)
+      case Max(l, r)   => intOp(l, r)(IntRes.max)
+      case Lt(l, r)    => intOp(l, r)(_ < _)
+      case LtEq(l, r)  => intOp(l, r)(_ <= _)
+      case Gt(l, r)    => intOp(l, r)(_ > _)
+      case GtEq(l, r)  => intOp(l, r)(_ >= _)
+      case Exists(cs)  => cs.traverse(evalToBool).map(bs => BoolRes(bs.exists(_.b)))
+      case All(cs)     => cs.traverse(evalToBool).map(bs => BoolRes(bs.forall(_.b)))
+
+      // Game Level Exprs
+      case GetMapId       => getGame.map(g => MapIdRes(g.currentLoc.mapId))
+      case GetPosition    => getGame.map(g => PositionRes(g.currentLoc))
+      case IsChestOpen(p) => pure(BoolRes(false)) // TODO
+      case PlayerIsDead   => getGame.map(g => BoolRes(g.battle.exists(_.playerIsDead)))
+      case EnemyIsDead    => getGame.map(g => BoolRes(g.battle.exists(_.enemyIsDead)))
+      case InBattle       => getGame.map(g => BoolRes(g.battle.isDefined))
+      case WindowDepth    => getGame.map(g => IntRes(g.windowDepth))
+      case LevelingUp     => getGame.map(g => BoolRes(g.levelingUp))
+      case CurrentDestination =>
+        getGame.map(g => PositionRes(g.destination.getOrElse(fail("boom"))))
     }
-  }
 
-  def eval(c: Expr): GameAction[ConditionRes] = c match {
-    // Literals
-    case Value(IntLit(v))      => pure(IntRes(v))
-    case Value(BoolLit(v))     => pure(BoolRes(v))
-    case Value(MapIdLit(v))    => pure(MapIdRes(v))
-    case Value(PositionLit(p)) => pure(PositionRes(p))
-
-    // Language level Exprs
-    case Not(c)      => evalToBool(c).map(_.negate)
-    case Eq(l, r)    => for { l_ <- eval(l); r_ <- eval(r) } yield BoolRes(l_ == r_)
-    case NotEq(l, r) => for { l_ <- eval(l); r_ <- eval(r) } yield BoolRes(l_ != r_)
-    case Add(l, r)   => intOp(l, r)(_ + _)
-    case Sub(l, r)   => intOp(l, r)(_ - _)
-    case Mult(l, r)  => intOp(l, r)(_ * _)
-    case Div(l, r)   => intOp(l, r)(_ / _)
-    case Min(l, r)   => intOp(l, r)(IntRes.min)
-    case Max(l, r)   => intOp(l, r)(IntRes.max)
-    case Lt(l, r)    => intOp(l, r)(_ < _)
-    case LtEq(l, r)  => intOp(l, r)(_ <= _)
-    case Gt(l, r)    => intOp(l, r)(_ > _)
-    case GtEq(l, r)  => intOp(l, r)(_ >= _)
-    case Exists(cs)  => cs.traverse(evalToBool).map(bs => BoolRes(bs.exists(_.b)))
-    case All(cs)     => cs.traverse(evalToBool).map(bs => BoolRes(bs.forall(_.b)))
-
-    // Game Level Exprs
-    case GetMapId           => getGame.map(g => MapIdRes(g.currentLoc.mapId))
-    case GetPosition        => getGame.map(g => PositionRes(g.currentLoc))
-    case IsChestOpen(p)     => pure(BoolRes(false)) // TODO
-    case PlayerIsDead       => getGame.map(g => BoolRes(g.battle.exists(_.playerIsDead)))
-    case EnemyIsDead        => getGame.map(g => BoolRes(g.battle.exists(_.enemyIsDead)))
-    case InBattle           => getGame.map(g => BoolRes(g.battle.isDefined))
-    case WindowDepth        => getGame.map(g => IntRes(g.windowDepth))
-    case LevelingUp         => getGame.map(g => BoolRes(g.levelingUp))
-    case CurrentDestination => getGame.map(g => PositionRes(g.destination.getOrElse(fail("boom"))))
+    for {
+      res <- go
+      _   <- log((expr, res))
+    } yield res
   }
 
   def intOp(l: Expr, r: Expr)(f: (IntRes, IntRes) => ConditionRes): GameAction[ConditionRes] =
@@ -231,11 +233,8 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
     _            <- when(currentFrame < frameToWaitUntil)(waitUntilFrame(frameToWaitUntil))
   } yield ()
 
-  private def waitUntil(c: Expr): GameAction_ =
-    log(("wait until", c)) *>
-      evalToBool(c).flatMap(b =>
-        when(!b.b)(machine.advanceOneFrame *> syncGameState *> waitUntil(c))
-      )
+  private def waitUntil(e: Expr): GameAction_ =
+    whenE(Not(e))(machine.advanceOneFrame *> syncGameState *> waitUntil(e))
 
   def fail(msg: String)                                          = throw new RuntimeException(msg)
   def pure[A](a: A): GameAction[A]                               = StateT.pure(a)
@@ -252,6 +251,7 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
   def setGame(game: Game): GameAction_                           = StateT.set(game)
   def modifyGame: (Game => Game) => StateT[IO, Game, Unit]       = StateT.modify[IO, Game]
   def modifyGameF: (Game => IO[Game]) => StateT[IO, Game, Unit]  = StateT.modifyF[IO, Game]
+  def logG[A](msg: String)(f: Game => A): GameAction_            = getGame.flatMap(g => log((msg, f(g))))
 
   def syncGameState: GameAction_ = for {
     // read stuff from machine into the game
@@ -269,15 +269,11 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
     // handle events (TODO: should we do this immediately instead of last?)
     _ <- machine.pollEvent.traverse(handleEvent)
 
-    _ <- getGame.flatMap(g => log(("leveled up", g.levelingUp)))
-
+    // if a battle has started in the game, we handle that here.
     _ <- getGame.flatMap(g => when(g.battleScriptRequired)(executeBattle))
   } yield ()
 
-  def executeBattle: GameAction_ = for {
-    _ <- modifyGame(g => g.startBattle)
-    _ <- interpret(BattleScript)
-  } yield ()
+  def executeBattle: GameAction_ = modifyGame(_.startBattle) *> interpret(BattleScript)
 
   def updatePlayerData: StateT[IO, Game, Unit] = modifyGameF { g =>
     for {
@@ -293,36 +289,18 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
   def handleEvent(event: Event): GameAction_ = for {
     _ <- log(("== EVENT ==", event))
     _ <- event match {
-      case BattleStarted(enemy) =>
-        modifyGame { g =>
-          val newEnemyLocs =
-            g.enemyLocs.get(enemy.id).map(_ + g.currentLoc).getOrElse(Set(g.currentLoc))
-          g.copy(battle = Some(Battle(enemy)), enemyLocs = g.enemyLocs + (enemy.id -> newEnemyLocs))
-        }
-      case PlayerDefeated =>
-        modifyGame(g => g.copy(battle = Some(g.battle.get.copy(playerIsDead = true))))
-      case EnemyDefeated =>
-        modifyGame(g => g.copy(battle = Some(g.battle.get.copy(enemyIsDead = true))))
-      case LevelUp             => modifyGame(_.copy(levelingUp = true))
-      case DoneLevelingUp      => modifyGame(_.copy(levelingUp = false))
-      case FightEnded          => modifyGame(_.copy(battle = None))
-      case MapChange(newMapId) => lift(machine.cheat)
-      case WindowOpened        => modifyGame(g => g.copy(windowDepth = g.windowDepth + 1))
-      case WindowRemoved       => modifyGame(g => g.copy(windowDepth = g.windowDepth - 1))
-      case _                   => pure(())
+      case BattleStarted(enemy) => modifyGame(_.encounter(enemy))
+      case PlayerDefeated       => modifyGame(_.playerDefeated)
+      case EnemyDefeated        => modifyGame(_.enemyDefeated)
+      case LevelUp              => modifyGame(_.copy(levelingUp = true))
+      case DoneLevelingUp       => modifyGame(_.copy(levelingUp = false))
+      case FightEnded           => modifyGame(_.copy(battle = None))
+      case WindowOpened         => modifyGame(g => g.copy(windowDepth = g.windowDepth + 1))
+      case WindowRemoved        => modifyGame(g => g.copy(windowDepth = g.windowDepth - 1))
+      case MapChange(newMapId)  => lift(machine.cheat)
+      case _                    => pure(())
     }
   } yield ()
-
-  // TODO: this _should_ be pure, not IO. only IO because we print a few things.
-  def pickDestination(game: Game): IO[Option[Point]] =
-    if (game.onOverworld && game.destination.isEmpty) {
-      val borderTiles: List[Point] = game.graph.knownWorldBorder.toList.map(_._1)
-      for {
-        _ <- logIO(("borderTiles", borderTiles))
-        newDest = borderTiles(new Random().nextInt(borderTiles.size))
-        _ <- logIO(("New Destination", newDest))
-      } yield Some(newDest)
-    } else game.destination.pure[IO]
 
   def discoverOverworldNodesM: GameAction_ =
     for {
@@ -336,10 +314,8 @@ case class Interpreter(machine: Machine, gameMaps: GameMaps) {
       _ <- setGame(game.copy(graph = updatedGraph))
     } yield ()
 
-  def printVisibleOverworldGrid(game: Game): IO[Unit] = {
-    logIO("-----Grid-----") *>
-      game.maps.overworld.getVisibleOverworldGrid(game.currentLoc).toList.traverse_ { row =>
-        logIO(row.map(_._2).mkString(","))
-      }
-  }
+  def printVisibleOverworldGrid(game: Game): IO[Unit] = for {
+    _ <- logIO("-----Grid-----")
+    _ <- game.visibleGrid.traverse_ { row => logIO(row.map(_._2).mkString(",")) }
+  } yield ()
 }

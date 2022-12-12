@@ -4,6 +4,7 @@ import com.joshcough.dwrai.Button._
 import com.joshcough.dwrai.MapId.{TantegelId, TantegelThroneRoomId}
 
 case class Scripts(maps: GameMaps) {
+
   sealed trait Script
 
   sealed trait Literal
@@ -82,6 +83,23 @@ case class Scripts(maps: GameMaps) {
   case object SetRandomDestination        extends Script
   case class SetDestination(p: Point)     extends Script
   case object ClearDestination            extends Script
+
+  def gotoDestination(from: Point, to: Point)(paths: List[Path]) =
+    Consecutive("Going to destination", List(goto(from, to)(paths), ClearDestination))
+
+  def goto(from: Point, to: Point)(paths: List[Path]): Script =
+    paths match {
+      case Nil => DebugScript(s"WARNING: Could not find a path to $to!")
+      case path :: _ =>
+        val commands = path.convertPathToCommands.map {
+          case OpenDoorAt(p, dir)          => OpenDoor(p, dir)
+          case MoveCommand(from, to, Warp) => TakeStairs(from, to)
+          case MoveCommand(from, to, dir)  => Move(from, to, dir)
+        }
+        Logging.logUnsafe(("Path", path))
+        Logging.logUnsafe(("commands", commands))
+        Consecutive(s"Goto $to from $from", commands)
+    }
 
   def Goto(point: Point) = Consecutive(s"goto $point", List(SetDestination(point), GotoDestination))
 
@@ -248,7 +266,9 @@ end)
     Consecutive(
       "Battle",
       List(
-        A.holdUntil(Not(InBattle) || LevelingUp),
+        A.holdUntil(EnemyIsDead || PlayerIsDead),
+        WaitFor(180),
+        A.holdFor(10),
         When(
           "Leveling up",
           LevelingUp,
@@ -288,4 +308,15 @@ end)
       Consecutive(s"Hold $b for $nrFrames", List(HoldButtonScript(b, nrFrames), WaitFor(1)))
     def holdUntil(expr: Expr): Script = HoldButtonUntilScript(b, expr)
   }
+
+  val mainScript: Script = Consecutive(
+    "DWR AI",
+    List(
+      DebugScript("starting interpreter"),
+      GameStartMenuScript,
+      WaitUntil(OnMap(TantegelThroneRoomId)),
+      ThroneRoomOpeningGame,
+      While(True, Consecutive("...", List(SetRandomDestination, GotoDestination)))
+    )
+  )
 }
